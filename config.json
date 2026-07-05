@@ -1,0 +1,11 @@
+{
+  "operacion": "venta",
+  "comunas": [],
+  "paginas": 10,
+  "top_n": 50,
+  "min_score": 0.15,
+  "min_comparables": 6,
+  "racionales_top": 15,
+  "max_props": 8000,
+  "uf_manual": 39500
+}

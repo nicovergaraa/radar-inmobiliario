@@ -1,0 +1,36 @@
+name: Radar diario
+
+on:
+  schedule:
+    - cron: "0 11 * * *"   # 11:00 UTC ≈ 7-8 AM Chile (según horario de verano)
+  workflow_dispatch: {}      # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ML_ACCESS_TOKEN: ${{ secrets.ML_ACCESS_TOKEN }}
+        run: python pipeline.py
+
+      - name: Publicar base y reporte
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "radar-bot@users.noreply.github.com"
+          git add data docs
+          git commit -m "radar: $(date -u +%F)" || echo "sin cambios"
+          git push
