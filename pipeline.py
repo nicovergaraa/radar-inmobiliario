@@ -7,6 +7,8 @@ Ingesta (API MercadoLibre) → deduplicación → scoring vs mediana UF/m²
 Corre automáticamente vía GitHub Actions (ver .github/workflows/daily.yml).
 """
 
+import base64
+import hashlib
 import html
 import json
 import os
@@ -19,9 +21,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import requests
+from cryptography.fernet import Fernet, InvalidToken
 
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "db.json"
+TOKEN_ENC_PATH = ROOT / "data" / "meli_token.enc"
 SHOWN_PATH = ROOT / "data" / "shown.json"
 REPORT_PATH = ROOT / "docs" / "index.html"
 CONFIG_PATH = ROOT / "config.json"
@@ -94,30 +98,105 @@ def get_uf(cfg):
     return cfg.get("uf_manual", 39500)
 
 
+def _meli_fernet():
+    """Fernet con clave derivada de ML_STATE_KEY (SHA256 → base64 urlsafe)."""
+    key = os.environ.get("ML_STATE_KEY", "").strip()
+    if not key:
+        return None
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def _meli_oauth_post(data, contexto):
+    r = requests.post("https://api.mercadolibre.com/oauth/token",
+                      data=data, timeout=30)
+    if not r.ok:
+        print(f"Respuesta de oauth/token ({contexto}): HTTP {r.status_code}")
+        print(r.text)
+        sys.exit(
+            f"ERROR: falló el {contexto} con MercadoLibre. Revisa el body "
+            "de error de arriba y la configuración de la app en "
+            "https://developers.mercadolibre.cl."
+        )
+    return r.json()
+
+
+def _save_token_state(fer, tok):
+    """Persiste cifrado el token. Los refresh tokens de MeLi rotan en cada
+    uso, así que hay que guardar siempre el más reciente."""
+    state = {
+        "access_token": tok.get("access_token", ""),
+        "refresh_token": tok.get("refresh_token", ""),
+        "obtenido_en": datetime.now(timezone.utc).isoformat(),
+    }
+    TOKEN_ENC_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_ENC_PATH.write_bytes(
+        fer.encrypt(json.dumps(state).encode("utf-8")))
+    print(f"Guardado {TOKEN_ENC_PATH.name} (access largo "
+          f"{len(state['access_token'])}, refresh largo "
+          f"{len(state['refresh_token'])})")
+
+
 def get_meli_token():
-    tok = os.environ.get("ML_ACCESS_TOKEN", "").strip()
-    if tok:
-        return tok
     cid = os.environ.get("ML_CLIENT_ID", "").strip()
     sec = os.environ.get("ML_CLIENT_SECRET", "").strip()
     print(f"ML_CLIENT_ID presente: {bool(cid)} (largo {len(cid)})")
     print(f"ML_CLIENT_SECRET presente: {bool(sec)} (largo {len(sec)})")
+    fer = _meli_fernet()
+    print(f"ML_STATE_KEY presente: {fer is not None}")
+
+    # (a) estado cifrado con refresh_token → refresh
+    if fer and TOKEN_ENC_PATH.exists() and cid and sec:
+        state = None
+        try:
+            state = json.loads(
+                fer.decrypt(TOKEN_ENC_PATH.read_bytes()).decode("utf-8"))
+        except (InvalidToken, ValueError) as e:
+            print(f"No pude descifrar {TOKEN_ENC_PATH.name} "
+                  f"({e.__class__.__name__}); pruebo otra vía")
+        if state and state.get("refresh_token"):
+            print("Auth: refresh de token de usuario "
+                  f"(refresh largo {len(state['refresh_token'])})")
+            tok = _meli_oauth_post(
+                {"grant_type": "refresh_token", "client_id": cid,
+                 "client_secret": sec,
+                 "refresh_token": state["refresh_token"]},
+                "refresh del token de usuario")
+            _save_token_state(fer, tok)
+            return tok["access_token"]
+
+    # (b) canje del authorization code inicial
+    code = os.environ.get("ML_AUTH_CODE", "").strip()
+    if code and cid and sec:
+        print(f"Auth: canje de ML_AUTH_CODE (largo {len(code)})")
+        tok = _meli_oauth_post(
+            {"grant_type": "authorization_code", "client_id": cid,
+             "client_secret": sec, "code": code,
+             "redirect_uri":
+                 "https://nicovergaraa.github.io/radar-inmobiliario/"},
+            "canje del authorization code")
+        if fer:
+            _save_token_state(fer, tok)
+        else:
+            print("OJO: sin ML_STATE_KEY no puedo persistir el refresh "
+                  "token; la próxima corrida no podrá refrescar")
+        return tok["access_token"]
+
+    # (c) fallback: token explícito o client credentials
+    tok = os.environ.get("ML_ACCESS_TOKEN", "").strip()
+    if tok:
+        print(f"Auth: ML_ACCESS_TOKEN explícito (largo {len(tok)})")
+        return tok
     if cid and sec:
-        r = requests.post("https://api.mercadolibre.com/oauth/token",
-            data={"grant_type": "client_credentials",
-                  "client_id": cid, "client_secret": sec}, timeout=30)
-        if not r.ok:
-            print(f"Respuesta de oauth/token: HTTP {r.status_code}")
-            print(r.text)
-            sys.exit(
-                "ERROR: MercadoLibre rechazó las credenciales OAuth "
-                "(ML_CLIENT_ID / ML_CLIENT_SECRET). Revisa el body de error "
-                "de arriba y la configuración de la app en "
-                "https://developers.mercadolibre.cl."
-            )
-        token = r.json()["access_token"]
+        print("Auth: client credentials (fallback)")
+        data = _meli_oauth_post(
+            {"grant_type": "client_credentials",
+             "client_id": cid, "client_secret": sec},
+            "flujo client credentials")
+        token = data["access_token"]
         print(f"Token OAuth obtenido (largo {len(token)})")
         return token
+    print("Auth: sin credenciales; sigo sin Authorization")
     return ""
 
 
