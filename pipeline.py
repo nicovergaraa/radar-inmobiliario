@@ -7,8 +7,6 @@ Ingesta (API MercadoLibre) → deduplicación → scoring vs mediana UF/m²
 Corre automáticamente vía GitHub Actions (ver .github/workflows/daily.yml).
 """
 
-import base64
-import hashlib
 import html
 import json
 import os
@@ -21,17 +19,21 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import requests
-from cryptography.fernet import Fernet, InvalidToken
+from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "db.json"
-TOKEN_ENC_PATH = ROOT / "data" / "meli_token.enc"
 SHOWN_PATH = ROOT / "data" / "shown.json"
 REPORT_PATH = ROOT / "docs" / "index.html"
 CONFIG_PATH = ROOT / "config.json"
 
-MELI_SEARCH = "https://api.mercadolibre.com/sites/MLC/search"
 MELI_ITEM_DESC = "https://api.mercadolibre.com/items/{}/description"
+PI_BASE = "https://www.portalinmobiliario.com"
+PI_SEARCHES = [("casa", "/venta/casa/"), ("depto", "/venta/departamento/")]
+BROWSER_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
@@ -98,182 +100,372 @@ def get_uf(cfg):
     return cfg.get("uf_manual", 39500)
 
 
-def _meli_fernet():
-    """Fernet con clave derivada de ML_STATE_KEY (SHA256 → base64 urlsafe)."""
-    key = os.environ.get("ML_STATE_KEY", "").strip()
-    if not key:
-        return None
-    digest = hashlib.sha256(key.encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+# --------------------------------------------- scraping Portal Inmobiliario
 
 
-def _meli_oauth_post(data, contexto):
-    r = requests.post("https://api.mercadolibre.com/oauth/token",
-                      data=data, timeout=30)
-    if not r.ok:
-        print(f"Respuesta de oauth/token ({contexto}): HTTP {r.status_code}")
-        print(r.text)
-        sys.exit(
-            f"ERROR: falló el {contexto} con MercadoLibre. Revisa el body "
-            "de error de arriba y la configuración de la app en "
-            "https://developers.mercadolibre.cl."
-        )
-    return r.json()
+def _read_balanced_json(text, start):
+    """Devuelve el objeto JSON {...} que empieza en text[start], balanceando
+    llaves y respetando strings."""
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
-def _save_token_state(fer, tok):
-    """Persiste cifrado el token. Los refresh tokens de MeLi rotan en cada
-    uso, así que hay que guardar siempre el más reciente."""
-    state = {
-        "access_token": tok.get("access_token", ""),
-        "refresh_token": tok.get("refresh_token", ""),
-        "obtenido_en": datetime.now(timezone.utc).isoformat(),
-    }
-    TOKEN_ENC_PATH.parent.mkdir(parents=True, exist_ok=True)
-    TOKEN_ENC_PATH.write_bytes(
-        fer.encrypt(json.dumps(state).encode("utf-8")))
-    print(f"Guardado {TOKEN_ENC_PATH.name} (access largo "
-          f"{len(state['access_token'])}, refresh largo "
-          f"{len(state['refresh_token'])})")
-
-
-def get_meli_token():
-    cid = os.environ.get("ML_CLIENT_ID", "").strip()
-    sec = os.environ.get("ML_CLIENT_SECRET", "").strip()
-    print(f"ML_CLIENT_ID presente: {bool(cid)} (largo {len(cid)})")
-    print(f"ML_CLIENT_SECRET presente: {bool(sec)} (largo {len(sec)})")
-    fer = _meli_fernet()
-    print(f"ML_STATE_KEY presente: {fer is not None}")
-
-    # (a) estado cifrado con refresh_token → refresh
-    if fer and TOKEN_ENC_PATH.exists() and cid and sec:
-        state = None
+def _embedded_json_blobs(page):
+    """JSON embebido en <script>: estado precargado primero, luego JSON-LD."""
+    blobs = []
+    for m in re.finditer(
+        r"(?:__PRELOADED_STATE__|__NEXT_DATA__|__INITIAL_STATE__)\s*=\s*\{", page
+    ):
+        raw = _read_balanced_json(page, m.end() - 1)
+        if raw:
+            try:
+                blobs.append(json.loads(raw))
+            except ValueError:
+                pass
+    for m in re.finditer(
+        r'<script[^>]+type="application/(?:ld\+)?json"[^>]*>(.*?)</script>',
+        page,
+        re.S,
+    ):
         try:
-            state = json.loads(
-                fer.decrypt(TOKEN_ENC_PATH.read_bytes()).decode("utf-8"))
-        except (InvalidToken, ValueError) as e:
-            print(f"No pude descifrar {TOKEN_ENC_PATH.name} "
-                  f"({e.__class__.__name__}); pruebo otra vía")
-        if state and state.get("refresh_token"):
-            print("Auth: refresh de token de usuario "
-                  f"(refresh largo {len(state['refresh_token'])})")
-            tok = _meli_oauth_post(
-                {"grant_type": "refresh_token", "client_id": cid,
-                 "client_secret": sec,
-                 "refresh_token": state["refresh_token"]},
-                "refresh del token de usuario")
-            _save_token_state(fer, tok)
-            return tok["access_token"]
+            blobs.append(json.loads(m.group(1).strip()))
+        except ValueError:
+            pass
+    return blobs
 
-    # (b) canje del authorization code inicial
-    code = os.environ.get("ML_AUTH_CODE", "").strip()
-    if code and cid and sec:
-        print(f"Auth: canje de ML_AUTH_CODE (largo {len(code)})")
-        tok = _meli_oauth_post(
-            {"grant_type": "authorization_code", "client_id": cid,
-             "client_secret": sec, "code": code,
-             "redirect_uri":
-                 "https://nicovergaraa.github.io/radar-inmobiliario/"},
-            "canje del authorization code")
-        if fer:
-            _save_token_state(fer, tok)
+
+def _looks_like_listing(d):
+    has_title = isinstance(d.get("title"), str) or isinstance(d.get("name"), str)
+    has_price = (
+        isinstance(d.get("price"), (int, float, dict))
+        or isinstance(d.get("prices"), dict)
+        or isinstance(d.get("offers"), dict)
+    )
+    has_link = any(
+        isinstance(d.get(k), str) and "/" in d[k] for k in ("permalink", "url")
+    ) or isinstance(d.get("id"), str)
+    return has_title and has_price and has_link
+
+
+def _walk_listings(node, found, depth=0):
+    if depth > 25:
+        return
+    if isinstance(node, dict):
+        if _looks_like_listing(node):
+            found.append(node)
         else:
-            print("OJO: sin ML_STATE_KEY no puedo persistir el refresh "
-                  "token; la próxima corrida no podrá refrescar")
-        return tok["access_token"]
+            for v in node.values():
+                _walk_listings(v, found, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_listings(v, found, depth + 1)
 
-    # (c) fallback: token explícito o client credentials
-    tok = os.environ.get("ML_ACCESS_TOKEN", "").strip()
-    if tok:
-        print(f"Auth: ML_ACCESS_TOKEN explícito (largo {len(tok)})")
-        return tok
-    if cid and sec:
-        print("Auth: client credentials (fallback)")
-        data = _meli_oauth_post(
-            {"grant_type": "client_credentials",
-             "client_id": cid, "client_secret": sec},
-            "flujo client credentials")
-        token = data["access_token"]
-        print(f"Token OAuth obtenido (largo {len(token)})")
-        return token
-    print("Auth: sin credenciales; sigo sin Authorization")
-    return ""
+
+def _texts_of(node, out, depth=0):
+    """Todos los strings dentro de un nodo JSON (para buscar m², dorms, etc.)."""
+    if depth > 8 or len(out) > 400:
+        return
+    if isinstance(node, str):
+        out.append(node)
+    elif isinstance(node, dict):
+        for v in node.values():
+            _texts_of(v, out, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            _texts_of(v, out, depth + 1)
+
+
+RX_M2 = re.compile(r"(\d[\d.,]*)\s*m²(?:\s*totales)?", re.I)
+RX_M2_TOT = re.compile(r"(\d[\d.,]*)\s*m²\s*totales", re.I)
+RX_DORMS = re.compile(r"(\d+)\s*dormitorio", re.I)
+RX_BATHS = re.compile(r"(\d+)\s*baño", re.I)
+RX_MLC = re.compile(r"(MLC-?\d+)")
+
+
+def _attr_lookup(d, ids):
+    for a in d.get("attributes") or []:
+        if isinstance(a, dict) and a.get("id") in ids:
+            return a.get("value_name") or a.get("value") or a.get("value_id")
+    return None
+
+
+def _norm_currency(c):
+    c = (c or "").strip().upper()
+    if c in ("CLF", "UF"):
+        return "UF"
+    if c in ("CLP", "$", "CLP$", "PESO", "PESOS"):
+        return "CLP"
+    return None
+
+
+def _comuna_from_location(d, texts):
+    loc = d.get("location")
+    if isinstance(loc, dict):
+        city = loc.get("city")
+        if isinstance(city, dict) and city.get("name"):
+            return city["name"]
+    addr = d.get("address")
+    if isinstance(addr, dict) and addr.get("addressLocality"):
+        return addr["addressLocality"]
+    # texto tipo "Av. Siempreviva 123, Las Condes, Metropolitana"
+    for t in texts:
+        if "," in t and not RX_M2.search(t) and len(t) < 120:
+            parts = [p.strip() for p in t.split(",") if p.strip()]
+            if len(parts) >= 2:
+                return parts[-2]
+    return None
+
+
+def _listing_from_json(d, ptype):
+    title = d.get("title") or d.get("name") or ""
+    if isinstance(title, dict):
+        title = title.get("text") or ""
+
+    price = cur = None
+    pr = d.get("price")
+    if isinstance(pr, (int, float)):
+        price, cur = pr, d.get("currency_id") or d.get("currency")
+    elif isinstance(pr, dict):
+        price = parse_num(pr.get("amount") if pr.get("amount") is not None else pr.get("value"))
+        cur = pr.get("currency_id") or pr.get("currency") or pr.get("currency_symbol")
+    if price is None and isinstance(d.get("prices"), dict):
+        for p in d["prices"].get("prices") or []:
+            if isinstance(p, dict) and p.get("amount") is not None:
+                price, cur = parse_num(p["amount"]), p.get("currency_id")
+                break
+    if price is None and isinstance(d.get("offers"), dict):
+        price = parse_num(d["offers"].get("price"))
+        cur = d["offers"].get("priceCurrency")
+
+    url = d.get("permalink") or d.get("url") or ""
+    lid = d.get("id") if isinstance(d.get("id"), str) else None
+    if not lid and url:
+        m = RX_MLC.search(url)
+        lid = m.group(1).replace("-", "") if m else None
+
+    thumb = d.get("thumbnail") or d.get("image") or ""
+    if isinstance(thumb, dict):
+        thumb = thumb.get("url") or thumb.get("contentUrl") or ""
+    if isinstance(thumb, list):
+        thumb = thumb[0] if thumb else ""
+    if not thumb:
+        pics = d.get("pictures")
+        if isinstance(pics, list) and pics and isinstance(pics[0], dict):
+            thumb = pics[0].get("url") or pics[0].get("src") or ""
+
+    texts = []
+    _texts_of(d, texts)
+    joined = " | ".join(texts)
+
+    m2 = parse_num(_attr_lookup(d, ("TOTAL_AREA", "COVERED_AREA")))
+    if not m2:
+        m = RX_M2_TOT.search(joined) or RX_M2.search(joined)
+        m2 = parse_num(m.group(1)) if m else None
+    dorms = parse_num(_attr_lookup(d, ("BEDROOMS",)))
+    if dorms is None:
+        m = RX_DORMS.search(joined)
+        dorms = float(m.group(1)) if m else None
+    baths = parse_num(_attr_lookup(d, ("FULL_BATHROOMS", "BATHROOMS")))
+    if baths is None:
+        m = RX_BATHS.search(joined)
+        baths = float(m.group(1)) if m else None
+
+    if not (lid or url) or not title or price is None:
+        return None
+    return {
+        "lid": lid or url,
+        "title": str(title),
+        "price": price,
+        "currency": _norm_currency(cur),
+        "m2": m2,
+        "dorms": dorms,
+        "baths": baths,
+        "comuna": _comuna_from_location(d, texts),
+        "url": url or None,
+        "thumb": thumb or "",
+        "seller": (d.get("seller") or {}).get("id")
+        if isinstance(d.get("seller"), dict)
+        else None,
+        "ptype": ptype,
+        "op": "venta",
+    }
+
+
+def _listings_from_html(page, ptype):
+    """Fallback: parseo por clases CSS del buscador (ui-search / poly-card)."""
+    soup = BeautifulSoup(page, "html.parser")
+    cards = soup.select("div.poly-card") or soup.select(
+        "li.ui-search-layout__item, div.ui-search-result__wrapper"
+    )
+    out = []
+    for card in cards:
+        a = card.select_one(
+            "a.poly-component__title, h2.ui-search-item__title a, "
+            "a.ui-search-link, a.ui-search-result__content, h3 a, a[href]"
+        )
+        if not a:
+            continue
+        title = a.get_text(" ", strip=True)
+        url = a.get("href") or ""
+        frac = card.select_one(".andes-money-amount__fraction")
+        sym = card.select_one(".andes-money-amount__currency-symbol")
+        price = parse_num(frac.get_text(strip=True)) if frac else None
+        cur = _norm_currency(sym.get_text(strip=True) if sym else None)
+        text = card.get_text(" | ", strip=True)
+        m = RX_M2_TOT.search(text) or RX_M2.search(text)
+        m2 = parse_num(m.group(1)) if m else None
+        md = RX_DORMS.search(text)
+        mb = RX_BATHS.search(text)
+        loc = card.select_one(
+            ".poly-component__location, .ui-search-item__location"
+        )
+        comuna = None
+        if loc:
+            parts = [p.strip() for p in loc.get_text(strip=True).split(",") if p.strip()]
+            if parts:
+                comuna = parts[-2] if len(parts) >= 2 else parts[-1]
+        img = card.select_one("img")
+        thumb = (img.get("data-src") or img.get("src") or "") if img else ""
+        mid = RX_MLC.search(url)
+        out.append(
+            {
+                "lid": mid.group(1).replace("-", "") if mid else (url or title),
+                "title": title,
+                "price": price,
+                "currency": cur,
+                "m2": m2,
+                "dorms": float(md.group(1)) if md else None,
+                "baths": float(mb.group(1)) if mb else None,
+                "comuna": comuna,
+                "url": url or None,
+                "thumb": thumb,
+                "seller": None,
+                "ptype": ptype,
+                "op": "venta",
+            }
+        )
+    return out
+
+
+def parse_search_page(page, ptype):
+    """Extrae avisos: primero JSON embebido (más estable), luego CSS."""
+    found = []
+    for blob in _embedded_json_blobs(page):
+        _walk_listings(blob, found)
+    items, seen = [], set()
+    for d in found:
+        it = _listing_from_json(d, ptype)
+        if it and it["lid"] not in seen:
+            seen.add(it["lid"])
+            items.append(it)
+    strategy = "json"
+    if not items:
+        items = _listings_from_html(page, ptype)
+        strategy = "css"
+    return items, strategy
+
+
+CHALLENGE_MARKERS = ("captcha", "cf-challenge", "challenge-form", "px-captcha",
+                     "validarte", "are you a human")
 
 
 def fetch_pages(cfg):
-    """Descarga páginas de resultados. Usa token si está definido."""
-    headers = {"User-Agent": "radar-inmobiliario/1.0"}
-    token = get_meli_token()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    items, pages = [], cfg.get("paginas", 10)
-    for page in range(pages):
-        params = {"category": "MLC1459", "limit": 50, "offset": page * 50}
-        r = requests.get(MELI_SEARCH, params=params, headers=headers, timeout=30)
-        if r.status_code in (401, 403):
-            print(f"Respuesta de la búsqueda: HTTP {r.status_code}")
-            print(r.text[:500])
-            sys.exit(
-                "ERROR: la API de MercadoLibre requiere autenticación "
-                f"(HTTP {r.status_code}). Crea una app en "
-                "https://developers.mercadolibre.cl y agrega como secrets de "
-                "GitHub (Settings → Secrets and variables → Actions) un "
-                "ML_ACCESS_TOKEN, o bien ML_CLIENT_ID y ML_CLIENT_SECRET "
-                "para que el pipeline pida el token solo."
-            )
-        r.raise_for_status()
-        batch = r.json().get("results", [])
-        items.extend(batch)
-        print(f"Página {page + 1}/{pages}: {len(batch)} avisos")
-        if len(batch) < 50:
-            break
-        time.sleep(0.8)  # ritmo amable con la API
+    """Scrapea resultados públicos de Portal Inmobiliario (venta de casas y
+    departamentos en Chile). Máximo cfg["paginas"] páginas en total."""
+    total = max(1, cfg.get("paginas", 10))
+    per_type = max(1, total // len(PI_SEARCHES))
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": BROWSER_UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "es-CL,es;q=0.9",
+        }
+    )
+    items = []
+    for ptype, path in PI_SEARCHES:
+        offset = 0
+        for page_n in range(per_type):
+            url = PI_BASE + path + (f"_Desde_{offset + 1}" if offset else "")
+            try:
+                r = session.get(url, timeout=30)
+            except requests.RequestException as e:
+                print(f"ADVERTENCIA: error de red en {url} ({e}); "
+                      "sigo con lo acumulado")
+                return items
+            if r.status_code != 200:
+                print(f"ADVERTENCIA: HTTP {r.status_code} en {url}; "
+                      "corto el scraping con lo acumulado")
+                print(r.text[:300])
+                return items
+            low = r.text[:20000].lower()
+            if any(k in low for k in CHALLENGE_MARKERS):
+                print(f"ADVERTENCIA: challenge/captcha detectado en {url}; "
+                      "corto el scraping con lo acumulado")
+                return items
+            batch, strategy = parse_search_page(r.text, ptype)
+            if not batch:
+                print(f"ADVERTENCIA: 0 avisos en {url} (¿cambió el HTML?); "
+                      "paso al siguiente listado")
+                break
+            items.extend(batch)
+            offset += len(batch)
+            print(f"[{ptype}] página {page_n + 1}/{per_type} vía {strategy}: "
+                  f"{len(batch)} avisos (acumulado {len(items)})")
+            if page_n + 1 < per_type:
+                time.sleep(2.5)  # ritmo respetuoso con el sitio
     return items
 
 
 def parse_item(item, uf_value):
+    """Valida un aviso scrapeado y lo deja en el formato interno (precio UF)."""
     try:
-        attrs = {a["id"]: a.get("value_name") for a in item.get("attributes", [])}
-        domain = item.get("domain_id") or ""
-        ptype = "otro"
-        if "HOUSE" in domain:
-            ptype = "casa"
-        elif "APARTMENT" in domain:
-            ptype = "depto"
-        elif "LAND" in domain or "LOT" in domain:
-            ptype = "terreno"
-        op = "arriendo" if "RENT" in domain else "venta"
-        if attrs.get("OPERATION"):
-            op = "venta" if "venta" in attrs["OPERATION"].lower() else op
-
-        comuna = (item.get("location") or {}).get("city", {}).get("name")
-        m2 = parse_num(attrs.get("TOTAL_AREA")) or parse_num(attrs.get("COVERED_AREA"))
+        comuna = item.get("comuna")
+        m2 = item.get("m2")
         if not comuna or not m2 or m2 < 10 or not item.get("price"):
             return None
 
-        cur = item.get("currency_id")
-        if cur == "CLF":
+        cur = item.get("currency")
+        if cur == "UF":
             price_uf = item["price"]
         elif cur == "CLP":
             price_uf = item["price"] / uf_value
         else:
             return None
+        op = item.get("op", "venta")
         if op == "venta" and price_uf < 100:
             return None
 
         return {
-            "lid": item["id"],
+            "lid": str(item["lid"]),
             "title": (item.get("title") or "")[:90],
             "comuna": comuna,
-            "ptype": ptype,
+            "ptype": item.get("ptype", "otro"),
             "op": op,
             "m2": m2,
-            "dorms": parse_num(attrs.get("BEDROOMS")),
-            "baths": parse_num(attrs.get("FULL_BATHROOMS")),
+            "dorms": item.get("dorms"),
+            "baths": item.get("baths"),
             "priceUF": round(price_uf),
-            "url": item.get("permalink"),
-            "thumb": (item.get("thumbnail") or "").replace("http://", "https://"),
-            "seller": (item.get("seller") or {}).get("id"),
+            "url": item.get("url"),
+            "thumb": (item.get("thumb") or "").replace("http://", "https://"),
+            "seller": item.get("seller"),
         }
     except Exception:
         return None
