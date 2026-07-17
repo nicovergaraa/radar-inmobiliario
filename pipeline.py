@@ -100,12 +100,24 @@ def get_meli_token():
         return tok
     cid = os.environ.get("ML_CLIENT_ID", "").strip()
     sec = os.environ.get("ML_CLIENT_SECRET", "").strip()
+    print(f"ML_CLIENT_ID presente: {bool(cid)} (largo {len(cid)})")
+    print(f"ML_CLIENT_SECRET presente: {bool(sec)} (largo {len(sec)})")
     if cid and sec:
         r = requests.post("https://api.mercadolibre.com/oauth/token",
             data={"grant_type": "client_credentials",
                   "client_id": cid, "client_secret": sec}, timeout=30)
-        r.raise_for_status()
-        return r.json()["access_token"]
+        if not r.ok:
+            print(f"Respuesta de oauth/token: HTTP {r.status_code}")
+            print(r.text)
+            sys.exit(
+                "ERROR: MercadoLibre rechazó las credenciales OAuth "
+                "(ML_CLIENT_ID / ML_CLIENT_SECRET). Revisa el body de error "
+                "de arriba y la configuración de la app en "
+                "https://developers.mercadolibre.cl."
+            )
+        token = r.json()["access_token"]
+        print(f"Token OAuth obtenido (largo {len(token)})")
+        return token
     return ""
 
 
@@ -120,6 +132,8 @@ def fetch_pages(cfg):
         params = {"category": "MLC1459", "limit": 50, "offset": page * 50}
         r = requests.get(MELI_SEARCH, params=params, headers=headers, timeout=30)
         if r.status_code in (401, 403):
+            print(f"Respuesta de la búsqueda: HTTP {r.status_code}")
+            print(r.text[:500])
             sys.exit(
                 "ERROR: la API de MercadoLibre requiere autenticación "
                 f"(HTTP {r.status_code}). Crea una app en "
