@@ -25,6 +25,8 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ML_ACCESS_TOKEN: ${{ secrets.ML_ACCESS_TOKEN }}
+          ML_CLIENT_ID: ${{ secrets.ML_CLIENT_ID }}
+          ML_CLIENT_SECRET: ${{ secrets.ML_CLIENT_SECRET }}
         run: python pipeline.py
 
       - name: Publicar base y reporte

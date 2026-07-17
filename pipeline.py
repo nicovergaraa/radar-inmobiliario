@@ -94,10 +94,25 @@ def get_uf(cfg):
     return cfg.get("uf_manual", 39500)
 
 
+def get_meli_token():
+    tok = os.environ.get("ML_ACCESS_TOKEN", "").strip()
+    if tok:
+        return tok
+    cid = os.environ.get("ML_CLIENT_ID", "").strip()
+    sec = os.environ.get("ML_CLIENT_SECRET", "").strip()
+    if cid and sec:
+        r = requests.post("https://api.mercadolibre.com/oauth/token",
+            data={"grant_type": "client_credentials",
+                  "client_id": cid, "client_secret": sec}, timeout=30)
+        r.raise_for_status()
+        return r.json()["access_token"]
+    return ""
+
+
 def fetch_pages(cfg):
     """Descarga páginas de resultados. Usa token si está definido."""
     headers = {"User-Agent": "radar-inmobiliario/1.0"}
-    token = os.environ.get("ML_ACCESS_TOKEN", "").strip()
+    token = get_meli_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     items, pages = [], cfg.get("paginas", 10)
@@ -108,9 +123,10 @@ def fetch_pages(cfg):
             sys.exit(
                 "ERROR: la API de MercadoLibre requiere autenticación "
                 f"(HTTP {r.status_code}). Crea una app en "
-                "https://developers.mercadolibre.cl, obtén un access token y "
-                "agrégalo como secret ML_ACCESS_TOKEN en GitHub "
-                "(Settings → Secrets and variables → Actions)."
+                "https://developers.mercadolibre.cl y agrega como secrets de "
+                "GitHub (Settings → Secrets and variables → Actions) un "
+                "ML_ACCESS_TOKEN, o bien ML_CLIENT_ID y ML_CLIENT_SECRET "
+                "para que el pipeline pida el token solo."
             )
         r.raise_for_status()
         batch = r.json().get("results", [])
