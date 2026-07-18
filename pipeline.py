@@ -1329,9 +1329,10 @@ function humanDays(n){
  var y=Math.max(1,Math.round(n/365));return '~'+y+(y===1?' año':' años');
 }
 function cardHTML(pid,p,extra){
- var links=p.links.length>1
-   ?p.links.map(function(u,i){return '<a class="btn" href="'+esc(u)+'" target="_blank" rel="noreferrer">Aviso '+(i+1)+'</a>'}).join(' ')
-   :'<a class="btn" href="'+esc(p.links[0]||'#')+'" target="_blank" rel="noreferrer">Ver aviso</a>';
+ var ls=p.links||[];
+ var links=ls.length>1
+   ?ls.map(function(u,i){return '<a class="btn" href="'+esc(u)+'" target="_blank" rel="noreferrer">Aviso '+(i+1)+'</a>'}).join(' ')
+   :'<a class="btn" href="'+esc(ls[0]||'#')+'" target="_blank" rel="noreferrer">Ver aviso</a>';
  var badges='';
  if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
@@ -1360,23 +1361,29 @@ function mainSectors(){
  ).filter(function(v){return v!=='all'&&v!=='__otros__'});
 }
 function applyFilters(){
- var f=getFilters(),n=0,MAIN=mainSectors();
- document.querySelectorAll('#inv-list .prop').forEach(function(c){
-  var okz=f.z==='all'||c.dataset.zona===f.z;
-  var okt=f.t==='all'||c.dataset.ptype===f.t;
-  var sec=c.dataset.sector||'';
-  var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
-  var ok=okz&&okt&&oks;
-  c.style.display=ok?'':'none';
-  if(ok)n++;
- });
- document.getElementById('inv-count').textContent=n+(n===1?' propiedad':' propiedades');
- document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
-  ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
- });
- var il=document.getElementById('inv-list');
- il.classList.toggle('show-zona',f.z==='all');
- il.classList.toggle('show-tipo',f.t==='all');
+ try{
+  var f=getFilters(),n=0,MAIN=mainSectors();
+  document.querySelectorAll('#inv-list .prop').forEach(function(c){
+   var okz=f.z==='all'||c.dataset.zona===f.z;
+   var okt=f.t==='all'||c.dataset.ptype===f.t;
+   var sec=c.dataset.sector||'';
+   var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
+   var ok=okz&&okt&&oks;
+   c.style.display=ok?'':'none';
+   if(ok)n++;
+  });
+  document.getElementById('inv-count').textContent=n+(n===1?' propiedad':' propiedades');
+  document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
+   ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
+  });
+  var il=document.getElementById('inv-list');
+  il.classList.toggle('show-zona',f.z==='all');
+  il.classList.toggle('show-tipo',f.t==='all');
+ }catch(e){
+  // ante cualquier error: estado por defecto = todo visible
+  console.error('radar filtros:',e);
+  document.querySelectorAll('#inv-list .prop').forEach(function(c){c.style.display=''});
+ }
 }
 function renderFavs(){
  var favs=getFavs(),box=document.getElementById('favs-list');
@@ -1400,11 +1407,12 @@ function renderNews(){
  var news=[],chgs=[];
  Object.keys(DATA).forEach(function(pid){
   var p=DATA[pid];
-  if(!p.act)return;
+  if(!p.act||!p.fs)return;
   if(isNew(p.fs)){news.push([pid,p]);return}
-  var before=p.hist.filter(function(h){return !isNew(h.d)});
-  if(before.length&&p.hist.length>before.length){
-   var prev=before[before.length-1].uf,cur=p.hist[p.hist.length-1].uf;
+  var hist=p.hist||[];
+  var before=hist.filter(function(h){return !isNew(h.d)});
+  if(before.length&&hist.length>before.length){
+   var prev=before[before.length-1].uf,cur=hist[hist.length-1].uf;
    if(prev!==cur)chgs.push([pid,p,prev,cur]);
   }
  });
@@ -1412,15 +1420,22 @@ function renderNews(){
  chgs.sort(function(a,b){return (a[3]-a[2])/a[2]-(b[3]-b[2])/b[2]});
  document.getElementById('new-hdr').textContent='Nuevas desde tu última visita ('+news.length+')';
  document.getElementById('chg-hdr').textContent='Cambios de precio desde tu última visita ('+chgs.length+')';
+ // CAP: sin tope, un "todo es nuevo" (primer día / incógnito) duplicaría el
+ // inventario completo en el DOM y revienta la memoria en móviles
+ var CAP=60;
+ var extraN=news.length-CAP;
  document.getElementById('new-list').innerHTML=news.length
-   ?news.map(function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')}).join('')
+   ?news.slice(0,CAP).map(function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')}).join('')
+    +(extraN>0?'<div class="note">…y '+extraN+' nuevas más. Todas están al inicio del “Inventario completo”, más abajo.</div>':'')
    :'<div class="empty">Sin propiedades nuevas desde tu última visita.</div>';
+ var extraC=chgs.length-CAP;
  document.getElementById('chg-list').innerHTML=chgs.length
-   ?chgs.map(function(e){
+   ?chgs.slice(0,CAP).map(function(e){
      var prev=e[2],cur=e[3],pct=(cur-prev)/prev*100;
      var cls=cur<prev?'down':'up',sign=cur<prev?'−':'+';
      return cardHTML(e[0],e[1],'<div class="pchg '+cls+'">UF '+uf(prev)+' → UF '+uf(cur)+' ('+sign+Math.abs(pct).toFixed(1)+'%)</div>');
     }).join('')
+    +(extraC>0?'<div class="note">…y '+extraC+' cambios más.</div>':'')
    :'<div class="empty">Sin cambios de precio desde tu última visita.</div>';
  syncStars();
 }
@@ -1445,29 +1460,38 @@ function exportFavs(btn){
  else fallback();
  function fallback(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){}document.body.removeChild(ta)}
 }
+function safe(name,fn){
+ // cada bloque falla solo: un error jamás borra el resto de la página
+ try{fn()}catch(e){console.error('radar '+name+':',e)}
+}
 document.addEventListener('click',function(e){
  var b=e.target.closest('.fav-btn');
- if(b){toggleFav(b.dataset.pid);return}
- if(e.target.closest('#fav-export')){exportFavs(e.target.closest('#fav-export'));return}
+ if(b){safe('favorita',function(){toggleFav(b.dataset.pid)});return}
+ var x=e.target.closest('#fav-export');
+ if(x){safe('exportar',function(){exportFavs(x)});return}
  var chp=e.target.closest('#filter-bar .chip');
  if(chp){
-  var f=getFilters();
-  f[chp.parentElement.dataset.group]=chp.dataset.v;
-  localStorage.setItem(FKEY,JSON.stringify(f));
-  applyFilters();
+  safe('filtros',function(){
+   var f=getFilters();
+   f[chp.parentElement.dataset.group]=chp.dataset.v;
+   localStorage.setItem(FKEY,JSON.stringify(f));
+   applyFilters();
+  });
   return;
  }
  var m=e.target.closest('#mark-seen');
  if(m){
-  localStorage.setItem(LV_KEY,new Date().toISOString());
-  renderNews();
-  m.textContent='Visto ✓';
-  setTimeout(function(){m.textContent='Marcar todo como visto'},1500);
+  safe('visto',function(){
+   localStorage.setItem(LV_KEY,new Date().toISOString());
+   renderNews();
+   m.textContent='Visto ✓';
+   setTimeout(function(){m.textContent='Marcar todo como visto'},1500);
+  });
  }
 });
-renderFavs();
-renderNews();
-applyFilters();
+safe('favoritas',renderFavs);
+safe('novedades',renderNews);
+safe('filtros',applyFilters);
 })();
 """
 
