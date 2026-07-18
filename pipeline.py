@@ -500,6 +500,19 @@ def fetch_pages(cfg):
             print(f"ADVERTENCIA: ninguna variante de {path} entregó avisos; "
                   "salto este listado")
             continue
+        # sanidad: el sitio puede aceptar un slug desconocido y devolver
+        # resultados genéricos en vez de 404
+        zona = _fold(cfg.get("zona_label") or "")
+        if custom and zona:
+            hits = sum(
+                1 for b in first[0]
+                if zona in _fold(" ".join(
+                    str(b.get(k) or "") for k in ("comuna", "sector", "loc", "title")))
+            )
+            if hits < len(first[0]) / 2:
+                print(f"ADVERTENCIA: solo {hits}/{len(first[0])} avisos de la "
+                      f"primera página mencionan '{cfg['zona_label']}'; la ruta "
+                      "podría estar devolviendo resultados genéricos")
         # si la ruta ya es específica del sector, no hay que filtrar después
         specific = bool(sector_slug) and sector_slug in working
 
@@ -646,6 +659,9 @@ def find_match(cand, props):
 def ingest(items, props, uf_value, cfg):
     today = date.today().isoformat()
     added = merged = changes = 0
+    # marca de scope: el reporte solo muestra propiedades vistas por la
+    # configuración vigente; lo demás queda en la base como historial
+    scope = cfg.get("zona_label") or ""
     comunas_filter = {c.strip().lower() for c in cfg.get("comunas", []) if c.strip()}
     for raw in items:
         c = parse_item(raw, uf_value)
@@ -668,11 +684,13 @@ def ingest(items, props, uf_value, cfg):
                 changes += 1
             if c.get("sector") and not p.get("sector"):
                 p["sector"] = c["sector"]
-            p.update(priceUF=c["priceUF"], lastSeen=today, url=c["url"] or p["url"])
+            p.update(priceUF=c["priceUF"], lastSeen=today, scope=scope,
+                     url=c["url"] or p["url"])
         else:
             props["p" + c["lid"]] = {
                 **c,
                 "listings": {c["lid"]: c["url"]},
+                "scope": scope,
                 "firstSeen": today,
                 "lastSeen": today,
                 "priceHist": [{"d": today, "uf": c["priceUF"]}],
@@ -996,10 +1014,13 @@ def render_report(props, cfg):
     esc = html.escape
     today = date.today().isoformat()
     zona = cfg.get("zona_label", "la comuna")
+    scope = cfg.get("zona_label") or ""
     active = {
         pid: p
         for pid, p in props.items()
-        if p.get("ptype") == "casa" and days_since(p["lastSeen"]) <= INACTIVE_DAYS
+        if p.get("ptype") == "casa"
+        and p.get("scope", "") == scope
+        and days_since(p["lastSeen"]) <= INACTIVE_DAYS
     }
 
     # --- encabezado
@@ -1054,9 +1075,11 @@ def render_report(props, cfg):
         inv_parts.extend(card_html(pid, p) for pid, p in group)
     inv_html = "".join(inv_parts) or '<div class="empty">Inventario vacío.</div>'
 
-    # --- JSON embebido (activas + inactivas, para favoritas)
+    # --- JSON embebido (activas + inactivas del scope, para favoritas)
     inv_data = {
-        pid: prop_public(pid, p, pid in active) for pid, p in props.items()
+        pid: prop_public(pid, p, pid in active)
+        for pid, p in props.items()
+        if p.get("ptype") == "casa" and p.get("scope", "") == scope
     }
     inv_json = json.dumps(inv_data, ensure_ascii=False).replace("</", "<\\/")
 
@@ -1087,7 +1110,7 @@ def render_report(props, cfg):
 <script type="application/json" id="inv-data">{inv_json}</script>
 <script>{FAVS_JS}</script>
 </body></html>""", encoding="utf-8")
-    inactive_n = len(props) - len(active)
+    inactive_n = len(inv_data) - len(active)
     print(f"Reporte generado: {REPORT_PATH} ({len(active)} activas, "
           f"{len(new_today)} nuevas hoy, {len(chg_cards)} cambios de precio, "
           f"{inactive_n} inactivas conservadas)")
