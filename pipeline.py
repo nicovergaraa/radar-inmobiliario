@@ -215,22 +215,33 @@ def _norm_currency(c):
     return None
 
 
-def _comuna_from_location(d, texts):
+def _location_info(d, texts):
+    """(comuna, sector, texto de ubicación). El sector es el barrio, si viene
+    estructurado (location.neighborhood) o como parte del texto de ubicación."""
+    comuna = sector = loc_text = None
     loc = d.get("location")
     if isinstance(loc, dict):
         city = loc.get("city")
         if isinstance(city, dict) and city.get("name"):
-            return city["name"]
+            comuna = city["name"]
+        nb = loc.get("neighborhood")
+        if isinstance(nb, dict) and nb.get("name"):
+            sector = nb["name"]
     addr = d.get("address")
-    if isinstance(addr, dict) and addr.get("addressLocality"):
-        return addr["addressLocality"]
-    # texto tipo "Av. Siempreviva 123, Las Condes, Metropolitana"
+    if isinstance(addr, dict) and not comuna:
+        comuna = addr.get("addressLocality")
+    # texto tipo "Camino X 123, Los Trapenses, Lo Barnechea, Metropolitana"
     for t in texts:
         if "," in t and not RX_M2.search(t) and len(t) < 120:
             parts = [p.strip() for p in t.split(",") if p.strip()]
             if len(parts) >= 2:
-                return parts[-2]
-    return None
+                loc_text = t
+                if not comuna:
+                    comuna = parts[-2]
+                if not sector and len(parts) >= 3:
+                    sector = parts[-3]
+                break
+    return comuna, sector, loc_text
 
 
 def _listing_from_json(d, ptype):
@@ -289,6 +300,7 @@ def _listing_from_json(d, ptype):
 
     if not (lid or url) or not title or price is None:
         return None
+    comuna, sector, loc_text = _location_info(d, texts)
     return {
         "lid": lid or url,
         "title": str(title),
@@ -297,7 +309,9 @@ def _listing_from_json(d, ptype):
         "m2": m2,
         "dorms": dorms,
         "baths": baths,
-        "comuna": _comuna_from_location(d, texts),
+        "comuna": comuna,
+        "sector": sector,
+        "loc": loc_text,
         "url": url or None,
         "thumb": thumb or "",
         "seller": (d.get("seller") or {}).get("id")
@@ -336,11 +350,14 @@ def _listings_from_html(page, ptype):
         loc = card.select_one(
             ".poly-component__location, .ui-search-item__location"
         )
-        comuna = None
+        comuna = sector = loc_text = None
         if loc:
-            parts = [p.strip() for p in loc.get_text(strip=True).split(",") if p.strip()]
+            loc_text = loc.get_text(strip=True)
+            parts = [p.strip() for p in loc_text.split(",") if p.strip()]
             if parts:
                 comuna = parts[-2] if len(parts) >= 2 else parts[-1]
+                if len(parts) >= 3:
+                    sector = parts[-3]
         img = card.select_one("img")
         thumb = (img.get("data-src") or img.get("src") or "") if img else ""
         mid = RX_MLC.search(url)
@@ -354,6 +371,8 @@ def _listings_from_html(page, ptype):
                 "dorms": float(md.group(1)) if md else None,
                 "baths": float(mb.group(1)) if mb else None,
                 "comuna": comuna,
+                "sector": sector,
+                "loc": loc_text,
                 "url": url or None,
                 "thumb": thumb,
                 "seller": None,
@@ -386,11 +405,65 @@ CHALLENGE_MARKERS = ("captcha", "cf-challenge", "challenge-form", "px-captcha",
                      "validarte", "are you a human")
 
 
+def _fold(s):
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def _slugify(s):
+    return re.sub(r"[^a-z0-9]+", "-", _fold(s)).strip("-")
+
+
+def _ptype_from_path(path):
+    if "departamento" in path or "depto" in path:
+        return "depto"
+    if "casa" in path:
+        return "casa"
+    return "otro"
+
+
+def _path_variants(path):
+    """La ruta configurada y variantes menos específicas del slug final,
+    quitando palabras del inicio (los-trapenses-lo-barnechea-metropolitana →
+    lo-barnechea-metropolitana), por si el slug del sector no existe como
+    listado propio y hay que filtrar después."""
+    variants = [path]
+    base, _, slug = path.rstrip("/").rpartition("/")
+    parts = slug.split("-")
+    for i in range(1, min(len(parts) - 1, 4)):
+        variants.append(f"{base}/{'-'.join(parts[i:])}")
+    return variants
+
+
+def _sector_match(it, sector_folded):
+    hay = _fold(" ".join(
+        str(it.get(k) or "") for k in ("sector", "comuna", "loc", "title")))
+    return sector_folded in hay
+
+
+def _get_search_html(session, url):
+    """(status, html). status 0 = error de red, -1 = challenge/captcha."""
+    try:
+        r = session.get(url, timeout=30)
+    except requests.RequestException as e:
+        print(f"ADVERTENCIA: error de red en {url} ({e})")
+        return 0, ""
+    low = r.text[:20000].lower()
+    if any(k in low for k in CHALLENGE_MARKERS):
+        print(f"ADVERTENCIA: challenge/captcha detectado en {url}")
+        return -1, ""
+    return r.status_code, r.text
+
+
+MAX_EXHAUSTIVE_PAGES = 80  # tope de seguridad del modo exhaustivo
+
+
 def fetch_pages(cfg):
-    """Scrapea resultados públicos de Portal Inmobiliario (venta de casas y
-    departamentos en Chile). Máximo cfg["paginas"] páginas en total."""
-    total = max(1, cfg.get("paginas", 10))
-    per_type = max(1, total // len(PI_SEARCHES))
+    """Scrapea resultados públicos de Portal Inmobiliario. Con
+    cfg["search_paths"] usa esas rutas en vez de las genéricas, probando
+    variantes menos específicas si la configurada no entrega avisos. Con
+    cfg["exhaustivo"] pagina hasta agotar el listado (página vacía o solo
+    avisos repetidos); si no, respeta cfg["paginas"]."""
     session = requests.Session()
     session.headers.update(
         {
@@ -399,38 +472,79 @@ def fetch_pages(cfg):
             "Accept-Language": "es-CL,es;q=0.9",
         }
     )
-    items = []
-    for ptype, path in PI_SEARCHES:
-        offset = 0
-        for page_n in range(per_type):
-            url = PI_BASE + path + (f"_Desde_{offset + 1}" if offset else "")
-            try:
-                r = session.get(url, timeout=30)
-            except requests.RequestException as e:
-                print(f"ADVERTENCIA: error de red en {url} ({e}); "
-                      "sigo con lo acumulado")
+    custom = [p if p.startswith("/") else "/" + p
+              for p in (cfg.get("search_paths") or [])]
+    searches = [(_ptype_from_path(p), p) for p in custom] or PI_SEARCHES
+    exhaustive = bool(cfg.get("exhaustivo"))
+    per_search = max(1, max(1, cfg.get("paginas", 10)) // len(searches))
+    sector = _fold((cfg.get("sector_filtro") or "").strip())
+    sector_slug = _slugify(cfg.get("sector_filtro") or "")
+
+    items, seen = [], set()
+    for ptype, path in searches:
+        # descarga de prueba: encontrar una ruta que entregue avisos
+        working = first = None
+        for cand in (_path_variants(path) if custom else [path]):
+            status, page = _get_search_html(session, PI_BASE + cand)
+            if status in (0, -1):
+                print("Corto el scraping con lo acumulado")
                 return items
-            if r.status_code != 200:
-                print(f"ADVERTENCIA: HTTP {r.status_code} en {url}; "
-                      "corto el scraping con lo acumulado")
-                print(r.text[:300])
-                return items
-            low = r.text[:20000].lower()
-            if any(k in low for k in CHALLENGE_MARKERS):
-                print(f"ADVERTENCIA: challenge/captcha detectado en {url}; "
-                      "corto el scraping con lo acumulado")
-                return items
-            batch, strategy = parse_search_page(r.text, ptype)
-            if not batch:
-                print(f"ADVERTENCIA: 0 avisos en {url} (¿cambió el HTML?); "
-                      "paso al siguiente listado")
+            batch, strategy = parse_search_page(page, ptype) if status == 200 else ([], "-")
+            if batch:
+                working, first = cand, (batch, strategy)
+                print(f"Ruta OK: {cand} ({len(batch)} avisos en la primera página)")
                 break
-            items.extend(batch)
-            offset += len(batch)
-            print(f"[{ptype}] página {page_n + 1}/{per_type} vía {strategy}: "
-                  f"{len(batch)} avisos (acumulado {len(items)})")
-            if page_n + 1 < per_type:
+            print(f"Ruta {cand}: HTTP {status} / 0 avisos; pruebo variante")
+            time.sleep(2.5)
+        if not working:
+            print(f"ADVERTENCIA: ninguna variante de {path} entregó avisos; "
+                  "salto este listado")
+            continue
+        # si la ruta ya es específica del sector, no hay que filtrar después
+        specific = bool(sector_slug) and sector_slug in working
+
+        offset = page_n = 0
+        while True:
+            if page_n == 0:
+                batch, strategy = first
+            else:
                 time.sleep(2.5)  # ritmo respetuoso con el sitio
+                url = PI_BASE + working + f"_Desde_{offset + 1}"
+                status, page = _get_search_html(session, url)
+                if status in (0, -1):
+                    print("Corto el scraping con lo acumulado")
+                    return items
+                if status != 200:
+                    print(f"ADVERTENCIA: HTTP {status} en {url}; "
+                          "corto con lo acumulado")
+                    return items
+                batch, strategy = parse_search_page(page, ptype)
+            if not batch:
+                print(f"[{ptype}] página {page_n + 1} sin avisos; fin del listado")
+                break
+            fresh = [b for b in batch if b["lid"] not in seen]
+            if exhaustive and not fresh:
+                print(f"[{ptype}] página {page_n + 1} solo repite avisos ya "
+                      "vistos; fin del listado")
+                break
+            seen.update(b["lid"] for b in fresh)
+            kept = fresh
+            note = ""
+            if sector and not specific:
+                kept = [b for b in fresh if _sector_match(b, sector)]
+                note = f", {len(kept)} tras filtro de sector"
+            items.extend(kept)
+            print(f"[{ptype}] página {page_n + 1} vía {strategy}: "
+                  f"{len(batch)} avisos{note} (acumulado {len(items)})")
+            offset += len(batch)
+            page_n += 1
+            if exhaustive:
+                if page_n >= MAX_EXHAUSTIVE_PAGES:
+                    print("ADVERTENCIA: alcancé el tope de seguridad de "
+                          f"{MAX_EXHAUSTIVE_PAGES} páginas; corto este listado")
+                    break
+            elif page_n >= per_search:
+                break
     return items
 
 
@@ -457,6 +571,7 @@ def parse_item(item, uf_value):
             "lid": str(item["lid"]),
             "title": (item.get("title") or "")[:90],
             "comuna": comuna,
+            "sector": item.get("sector"),
             "ptype": item.get("ptype", "otro"),
             "op": op,
             "m2": m2,
@@ -588,6 +703,31 @@ def score_all(props, cfg):
     return out
 
 
+def zone_criteria(props, cfg):
+    """Estadísticas del conjunto ingerido para 'Criterios de la zona'.
+    Las medianas se calculan sobre lo ingerido, que con sector_filtro o
+    search_paths específicas ya es solo el sector."""
+    op = cfg.get("operacion", "venta")
+    sel = [p for p in props.values() if p["op"] == op and p.get("m2")]
+    if len(sel) < 2:
+        return None
+    ufm2 = sorted(p["priceUF"] / p["m2"] for p in sel)
+    q = statistics.quantiles(ufm2, n=4)
+    name = (cfg.get("sector_filtro")
+            or ", ".join(cfg.get("comunas") or [])
+            or "todas las zonas")
+    return {
+        "sector": name,
+        "n": len(sel),
+        "med_ufm2": statistics.median(ufm2),
+        "p25": q[0],
+        "p75": q[2],
+        "med_m2": statistics.median(p["m2"] for p in sel),
+        "med_uf": statistics.median(p["priceUF"] for p in sel),
+        "all_casas": all(p["ptype"] == "casa" for p in sel),
+    }
+
+
 # ---------------------------------------------------------------- racionales
 
 
@@ -700,6 +840,10 @@ h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacin
 .risk{color:var(--red);font-size:12px;margin-top:4px}
 a.btn{display:inline-block;margin-top:10px;padding:8px 14px;border:1px solid var(--deep);border-radius:8px;color:var(--deep);font-weight:600;font-size:13px;text-decoration:none}
 footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;line-height:1.5}
+.crit-title{font-family:'Archivo',sans-serif;font-weight:700;font-size:15px}
+.crit-grid{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:13px}
+.crit-grid b{font-family:'IBM Plex Mono',monospace}
+.crit-rule{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.4;border-top:1px solid var(--line);padding-top:8px}
 """
 
 
@@ -740,7 +884,25 @@ def render_report(entries, stats, cfg, shown):
  <div>{badges}</div>{rat_html}
  <a class="btn" href="{esc(p['url'] or '#')}" target="_blank" rel="noreferrer">Ver aviso</a>
 </div>""")
-    body = "\n".join(cards) or '<div class="card">Sin oportunidades sobre el umbral hoy. La base sigue acumulando historial: mañana habrá más comparables.</div>'
+    crit_html = ""
+    z = stats.get("zona")
+    if z:
+        esc = html.escape
+        pct = cfg.get("min_score", 0.15) * 100
+        label = "casas analizadas" if z["all_casas"] else "propiedades analizadas"
+        crit_html = f"""
+<div class="card">
+ <div class="crit-title">Criterios de la zona — {esc(z["sector"])}</div>
+ <div class="crit-grid">
+  <div><b>{z["n"]}</b> {label}</div>
+  <div><b>{z["med_ufm2"]:.1f}</b> UF/m² mediana</div>
+  <div><b>{z["p25"]:.1f}–{z["p75"]:.1f}</b> UF/m² rango típico (p25–p75)</div>
+  <div><b>{z["med_m2"]:.0f} m²</b> superficie mediana</div>
+  <div><b>UF {z["med_uf"]:,.0f}</b> precio mediano</div>
+ </div>
+ <div class="crit-rule">Se listan las propiedades ≥{pct:.0f}% bajo la mediana UF/m² del sector; el porcentaje de cada tarjeta indica su distancia a esa mediana.</div>
+</div>"""
+    body = crit_html + ("\n".join(cards) or '<div class="card">Sin oportunidades sobre el umbral hoy. La base sigue acumulando historial: mañana habrá más comparables.</div>')
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
@@ -776,7 +938,11 @@ def main():
     add_rationales(top, props, cfg)
     top = [e for e in score_all(props, cfg) if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
 
-    stats = {"n_props": len(props), "listings": sum(len(p["ids"]) for p in props.values())}
+    stats = {
+        "n_props": len(props),
+        "listings": sum(len(p["ids"]) for p in props.values()),
+        "zona": zone_criteria(props, cfg),
+    }
     render_report(top, stats, cfg, shown)
 
     for e in top:  # registrar como mostradas (al precio actual)
