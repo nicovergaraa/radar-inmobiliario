@@ -629,37 +629,142 @@ PHASH_MAX_DIST = 6   # distancia de Hamming máxima para considerar igual
 PHASH_MAX_KEEP = 16  # tope de hashes acumulados por propiedad
 
 
-def hash_new_photos(items, hashed):
-    """Descarga y hashea (pHash) las fotos de los avisos sin entrada en el
-    cache {lid: [hash]}. Solo procesa lo scrapeado en esta corrida (scope
-    vigente); un lid ya hasheado nunca se vuelve a descargar."""
-    todo, seen_here = [], set()
+DETAIL_PAGE_BUDGET = 60  # páginas de detalle por corrida
+
+
+def _walk_pictures(node, add, depth=0):
+    """Recolecta URLs de arrays `pictures` en cualquier parte del JSON."""
+    if depth > 12:
+        return
+    if isinstance(node, dict):
+        pics = node.get("pictures")
+        if isinstance(pics, list):
+            for pc in pics:
+                if isinstance(pc, dict):
+                    add(pc.get("url") or pc.get("secure_url") or pc.get("src"))
+                elif isinstance(pc, str):
+                    add(pc)
+        for v in node.values():
+            _walk_pictures(v, add, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_pictures(v, add, depth + 1)
+
+
+def fetch_detail_photos(session, url):
+    """Descarga la página de detalle de un aviso y extrae hasta 4 URLs de su
+    galería: JSON embebido primero, luego <img> del HTML. Devuelve
+    (ok, urls); ok=False si la página no respondió 200 (no marcar como
+    visitada para reintentar otro día)."""
+    status, page = _get_search_html(session, url)
+    if status != 200:
+        return False, []
+    urls = []
+
+    def add(u):
+        if isinstance(u, dict):
+            u = u.get("url") or u.get("secure_url") or u.get("src")
+        if (isinstance(u, str) and u.startswith("http")
+                and not u.endswith(".svg") and u not in urls):
+            urls.append(u)
+
+    for blob in _embedded_json_blobs(page):
+        _walk_pictures(blob, add)
+        if isinstance(blob, dict):
+            img = blob.get("image")
+            for u in img if isinstance(img, list) else [img]:
+                add(u)
+    if len(urls) < 2:
+        soup = BeautifulSoup(page, "html.parser")
+        for img in soup.select(
+            ".ui-pdp-gallery img, img.ui-pdp-image, "
+            ".andes-carousel-snapped img, figure img"
+        ):
+            add(img.get("data-zoom") or img.get("data-src") or img.get("src"))
+    return True, urls[:4]
+
+
+def _hash_image_urls(session, urls, stats):
+    hashes = []
+    for u in urls[:4]:
+        try:
+            r = session.get(u, timeout=10)
+            if r.ok:
+                hashes.append(str(imagehash.phash(Image.open(BytesIO(r.content)))))
+                stats["imgs"] += 1
+            else:
+                stats["fail"] += 1
+        except Exception:
+            stats["fail"] += 1
+        time.sleep(0.2)
+    return hashes
+
+
+def hash_new_photos(items, hashed, detailed):
+    """Descarga y hashea (pHash) fotos de avisos. Cache {lid: [hash]}: un lid
+    hasheado nunca vuelve a descargar sus fotos; {lid: 1} en `detailed`
+    marca que su página de detalle ya se visitó (una vez en la vida).
+    Presupuesto: DETAIL_PAGE_BUDGET páginas de detalle por corrida —
+    primero los avisos nuevos del día sin galería (solo portada), y el
+    resto del presupuesto va al backlog de avisos con un solo hash."""
+    session = requests.Session()
+    session.headers.update({"User-Agent": BROWSER_UA})
+    stats = {"imgs": 0, "fail": 0}
+    budget = DETAIL_PAGE_BUDGET
+    n_detail = 0
+
+    # 1) avisos nuevos (sin entrada en cache)
+    new_items, seen_here = [], set()
     for it in items:
         lid = str(it.get("lid"))
         if lid not in hashed and lid not in seen_here:
             seen_here.add(lid)
-            todo.append(it)
-    if not todo:
-        return
-    session = requests.Session()
-    session.headers.update({"User-Agent": BROWSER_UA})
-    n_imgs = n_fail = 0
-    for it in todo:
-        hashes = []
-        for u in (it.get("photos") or [])[:4]:
-            try:
-                r = session.get(u, timeout=10)
-                if r.ok:
-                    hashes.append(str(imagehash.phash(Image.open(BytesIO(r.content)))))
-                    n_imgs += 1
-                else:
-                    n_fail += 1
-            except Exception:
-                n_fail += 1
-            time.sleep(0.2)
-        hashed[str(it["lid"])] = hashes
-    print(f"Fotos: {len(todo)} avisos nuevos, {n_imgs} imágenes hasheadas"
-          + (f", {n_fail} fallidas" if n_fail else ""))
+            new_items.append(it)
+    for it in new_items:
+        lid = str(it["lid"])
+        photos = list(it.get("photos") or [])[:4]
+        if len(photos) < 2 and it.get("url") and budget > 0:
+            time.sleep(2)  # pausa entre páginas de detalle
+            budget -= 1
+            ok, gallery = fetch_detail_photos(session, it["url"])
+            if ok:
+                n_detail += 1
+                detailed[lid] = 1
+                for u in photos:
+                    if u not in gallery:
+                        gallery.append(u)
+                photos = gallery[:4]
+        hashed[lid] = _hash_image_urls(session, photos, stats)
+
+    # 2) backlog: avisos ya hasheados con una sola foto y detalle pendiente
+    upgraded = 0
+    if budget > 0:
+        url_by_lid = {str(it.get("lid")): it.get("url") for it in items}
+        backlog = [
+            lid for lid in url_by_lid
+            if len(hashed.get(lid, [])) < 2
+            and lid not in detailed
+            and lid not in seen_here
+            and url_by_lid[lid]
+        ]
+        for lid in backlog[:budget]:
+            time.sleep(2)
+            ok, gallery = fetch_detail_photos(session, url_by_lid[lid])
+            if not ok:
+                continue
+            n_detail += 1
+            detailed[lid] = 1
+            new_hashes = _hash_image_urls(session, gallery, stats)
+            cur = hashed.get(lid, [])
+            hashed[lid] = cur + [h for h in new_hashes if h not in cur]
+            if new_hashes:
+                upgraded += 1
+
+    if new_items or n_detail:
+        print(f"Fotos: {len(new_items)} avisos nuevos, {n_detail} páginas de "
+              f"detalle visitadas ({upgraded} del backlog mejoradas), "
+              f"{stats['imgs']} imágenes hasheadas"
+              + (f", {stats['fail']} fallidas" if stats["fail"] else ""))
 
 
 def _phash_dist(a, b):
@@ -802,11 +907,11 @@ def _absorb(p, q):
 
 
 def refill_phashes(props, hashed):
-    """Vuelca el cache {lid: [hash]} a las propiedades que no tienen hashes."""
+    """Vuelca el cache {lid: [hash]} a las propiedades (merge deduplicado,
+    también propaga hashes nuevos de páginas de detalle del backlog)."""
     for p in props.values():
-        if not p.get("phashes"):
-            for lid in p["listings"]:
-                merge_phashes(p, hashed.get(str(lid), []))
+        for lid in p["listings"]:
+            merge_phashes(p, hashed.get(str(lid), []))
 
 
 def ingest(items, props, uf_value, cfg, hashed=None):
@@ -1315,13 +1420,14 @@ def main():
     cfg = load_json(CONFIG_PATH, {})
     db = load_json(DB_PATH, {"props": {}})
     props = db["props"]
-    hashed = db.get("hashed", {})  # cache pHash por listing id
+    hashed = db.get("hashed", {})      # cache pHash por listing id
+    detailed = db.get("detailed", {})  # lids con página de detalle visitada
     migrate_db(props)
     split_merged(props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
-    hash_new_photos(items, hashed)
+    hash_new_photos(items, hashed, detailed)
     refill_phashes(props, hashed)
     ingest(items, props, uf, cfg, hashed)
 
@@ -1329,6 +1435,7 @@ def main():
     save_json(DB_PATH, {
         "props": props,
         "hashed": hashed,
+        "detailed": detailed,
         "updated": datetime.now(timezone.utc).isoformat(),
     })
     print("Pipeline OK")
