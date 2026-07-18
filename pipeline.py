@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 RADAR INMOBILIARIO — pipeline diario
-Ingesta (API MercadoLibre) → deduplicación → scoring vs mediana UF/m²
-→ racionales con Claude → reporte HTML en docs/index.html (GitHub Pages).
+Inventario exhaustivo deduplicado de casas en venta (Portal Inmobiliario)
+→ novedades diarias, cambios de precio y favoritas del usuario
+→ reporte HTML en docs/index.html (GitHub Pages).
 
 Corre automáticamente vía GitHub Actions (ver .github/workflows/daily.yml).
 """
@@ -23,7 +24,6 @@ from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "db.json"
-SHOWN_PATH = ROOT / "data" / "shown.json"
 REPORT_PATH = ROOT / "docs" / "index.html"
 CONFIG_PATH = ROOT / "config.json"
 
@@ -589,10 +589,35 @@ def parse_item(item, uf_value):
 # ---------------------------------------------------------------- dedup
 
 
+def migrate_db(props):
+    """Migración: ids: [lid] + url único → listings: {lid: url}, sin perder
+    historial. Asigna la url conocida al lid que aparezca en ella."""
+    migrated = 0
+    for p in props.values():
+        if "listings" in p:
+            continue
+        ids = p.pop("ids", [p.get("lid")])
+        url = p.get("url")
+        url_lid = None
+        if url:
+            m = RX_MLC.search(url)
+            if m:
+                url_lid = m.group(1).replace("-", "")
+        p["listings"] = {}
+        for i, lid in enumerate(ids):
+            if lid == url_lid or (url_lid not in ids and i == 0):
+                p["listings"][lid] = url
+            else:
+                p["listings"][lid] = None
+        migrated += 1
+    if migrated:
+        print(f"Base migrada a listings por aviso: {migrated} propiedades")
+
+
 def find_match(cand, props):
     cand_tok = tokenize(cand["title"])
     for pid, p in props.items():
-        if cand["lid"] in p["ids"]:
+        if cand["lid"] in p["listings"]:
             return pid
         if (
             p["comuna"] != cand["comuna"]
@@ -631,19 +656,23 @@ def ingest(items, props, uf_value, cfg):
         pid = find_match(c, props)
         if pid:
             p = props[pid]
-            if c["lid"] not in p["ids"]:
-                p["ids"].append(c["lid"])
+            if c["lid"] not in p["listings"]:
+                p["listings"][c["lid"]] = c["url"]
                 p["repubs"] = p.get("repubs", 0) + 1
                 merged += 1
+            elif c["url"]:
+                p["listings"][c["lid"]] = c["url"]
             last = p["priceHist"][-1]
             if abs(last["uf"] - c["priceUF"]) / last["uf"] > 0.01:
                 p["priceHist"].append({"d": today, "uf": c["priceUF"]})
                 changes += 1
+            if c.get("sector") and not p.get("sector"):
+                p["sector"] = c["sector"]
             p.update(priceUF=c["priceUF"], lastSeen=today, url=c["url"] or p["url"])
         else:
             props["p" + c["lid"]] = {
                 **c,
-                "ids": [c["lid"]],
+                "listings": {c["lid"]: c["url"]},
                 "firstSeen": today,
                 "lastSeen": today,
                 "priceHist": [{"d": today, "uf": c["priceUF"]}],
@@ -743,7 +772,7 @@ def fetch_description(lid):
 
 def claude_rationale(entry, api_key):
     p = entry["p"]
-    desc = fetch_description(p["ids"][0])
+    desc = fetch_description(next(iter(p["listings"]), None))
     prompt = f"""Eres un analista inmobiliario chileno experto en detectar oportunidades y riesgos.
 Responde SOLO con un objeto JSON válido, sin markdown, con esta forma:
 {{"racional": "2-3 frases explicando por qué está barata y qué la hace atractiva", "riesgos": ["riesgo 1", "riesgo 2"]}}
@@ -814,6 +843,7 @@ def add_rationales(entries, props, cfg):
 
 # ---------------------------------------------------------------- reporte
 
+INACTIVE_DAYS = 7  # sin aparecer en la ingesta → inactiva (vendida/retirada)
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
@@ -822,148 +852,262 @@ CSS = """
 header{background:var(--deep);color:#fff;padding:20px 16px}
 .wrap{max-width:680px;margin:0 auto;padding:0 16px}
 h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.02em;margin:0}
-.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.75;margin-top:4px}
-.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
+.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.75;margin-top:4px;line-height:1.6}
+h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;margin:28px 0 4px}
+h3.grp{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;color:var(--deep);margin:20px 0 2px}
+.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
 .row{display:flex;gap:12px}.row img{width:72px;height:72px;object-fit:cover;border-radius:8px;background:var(--paper);flex-shrink:0}
-.score{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:20px;color:var(--deep)}
-.price{font-family:'IBM Plex Mono',monospace;font-size:14px;float:right}
-.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.3;margin-top:2px}
-.meta{font-size:12px;color:var(--muted);margin-top:3px}
-.band{position:relative;height:8px;border-radius:4px;margin-top:12px;background:linear-gradient(90deg,var(--deep),var(--gsoft) 50%,var(--rsoft))}
-.band .mid{position:absolute;left:50%;top:-3px;width:2px;height:14px;background:var(--ink);opacity:.5}
-.band .dot{position:absolute;top:-4px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--green);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
-.bandlbl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px;font-family:'IBM Plex Mono',monospace}
-.comp{font-size:12px;color:var(--muted);margin-top:8px;font-family:'IBM Plex Mono',monospace}
+.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:16px;color:var(--deep)}
+.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.3;margin-top:2px;padding-right:44px}
+.meta{font-size:12px;color:var(--muted);margin-top:3px;font-family:'IBM Plex Mono',monospace}
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;margin:6px 6px 0 0}
-.b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}
-.rat{background:var(--paper);border-radius:8px;padding:10px;margin-top:10px;font-size:13px;line-height:1.45}
-.risk{color:var(--red);font-size:12px;margin-top:4px}
-a.btn{display:inline-block;margin-top:10px;padding:8px 14px;border:1px solid var(--deep);border-radius:8px;color:var(--deep);font-weight:600;font-size:13px;text-decoration:none}
+.b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}
+.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:8px}
+.pchg.down{color:var(--green)}.pchg.up{color:var(--red)}
+a.btn{display:inline-block;margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;color:var(--deep);font-weight:600;font-size:13px;text-decoration:none}
+button.btn{margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;background:#fff;color:var(--deep);font-weight:600;font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
+.fav-btn{position:absolute;top:8px;right:8px;width:44px;height:44px;border:none;background:none;font-size:24px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
+.note{background:var(--asoft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.4}
+.empty{font-size:13px;color:var(--muted);margin:8px 0 4px}
 footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;line-height:1.5}
-.crit-title{font-family:'Archivo',sans-serif;font-weight:700;font-size:15px}
-.crit-grid{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:8px;font-size:13px}
-.crit-grid b{font-family:'IBM Plex Mono',monospace}
-.crit-rule{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.4;border-top:1px solid var(--line);padding-top:8px}
 """
 
 
-def render_report(entries, stats, cfg, shown):
-    today_new = sum(1 for e in entries if e["pid"] not in shown or e["p"]["priceUF"] < shown[e["pid"]])
-    now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
-    cards = []
-    for e in entries:
-        p, esc = e["p"], html.escape
-        pos = 50 - max(-0.4, min(0.4, e["score"])) / 0.4 * 50
-        is_new = e["pid"] not in shown or p["priceUF"] < shown[e["pid"]]
-        badges = ""
-        if is_new:
-            badges += '<span class="badge b-g">nueva en el radar</span>'
-        if e["drops"]:
-            badges += f'<span class="badge b-g">{e["drops"]} baja(s) de precio</span>'
-        if p["repubs"]:
-            badges += f'<span class="badge b-a">republicada ×{p["repubs"]}</span>'
-        if e["days"] > 120:
-            badges += f'<span class="badge b-a">{e["days"]} días en mercado</span>'
-        rat_html = ""
-        if p.get("rationale"):
-            risks = "".join(f'<div class="risk">⚠ {esc(r)}</div>' for r in p["rationale"].get("riesgos", []))
-            rat_html = f'<div class="rat">{esc(p["rationale"]["racional"])}{risks}</div>'
-        img = f'<img src="{esc(p["thumb"])}" alt="">' if p.get("thumb") else ""
-        cards.append(f"""
-<div class="card">
+def prop_public(pid, p, active):
+    """Datos por propiedad para el JSON embebido (favoritas en JS)."""
+    return {
+        "t": p["title"],
+        "s": p.get("sector") or p.get("comuna") or "",
+        "uf": p["priceUF"],
+        "m2": round(p["m2"]),
+        "ufm2": round(p["priceUF"] / p["m2"], 1),
+        "d": p.get("dorms"),
+        "b": p.get("baths"),
+        "days": days_since(p["firstSeen"]),
+        "links": [u for u in p["listings"].values() if u],
+        "rep": p.get("repubs", 0),
+        "act": active,
+        "img": (p.get("thumb") or ""),
+    }
+
+
+def card_html(pid, p, extra_html="", extra_badges=""):
+    esc = html.escape
+    links = [u for u in p["listings"].values() if u]
+    if len(links) > 1:
+        btns = " ".join(
+            f'<a class="btn" href="{esc(u)}" target="_blank" rel="noreferrer">Aviso {i + 1}</a>'
+            for i, u in enumerate(links)
+        )
+    else:
+        one = links[0] if links else (p.get("url") or "#")
+        btns = f'<a class="btn" href="{esc(one)}" target="_blank" rel="noreferrer">Ver aviso</a>'
+    badges = extra_badges
+    if p.get("repubs"):
+        badges += f'<span class="badge b-a">republicada ×{p["repubs"]}</span>'
+    img = f'<img src="{esc(p["thumb"])}" alt="" loading="lazy">' if p.get("thumb") else ""
+    sector = p.get("sector") or p.get("comuna") or "—"
+    db_txt = ""
+    if p.get("dorms"):
+        db_txt += f' · {p["dorms"]:.0f}D'
+    if p.get("baths"):
+        db_txt += f'/{p["baths"]:.0f}B'
+    days = days_since(p["firstSeen"])
+    return f"""
+<div class="card prop">
+ <button class="fav-btn" data-pid="{esc(pid)}" aria-label="marcar favorita">☆</button>
  <div class="row">{img}
   <div style="min-width:0;flex:1">
-   <span class="price">UF {p['priceUF']:,}</span><span class="score">−{e['score']:.0%}</span>
-   <div class="title">{esc(p['title'])}</div>
-   <div class="meta">{esc(p['comuna'])} · {p['ptype']} · {p['m2']:.0f} m²{f" · {p['dorms']:.0f}D" if p.get('dorms') else ""}</div>
+   <span class="price">UF {p["priceUF"]:,}</span>
+   <div class="title">{esc(p["title"])}</div>
+   <div class="meta">{esc(sector)} · {p["m2"]:.0f} m² · {p["priceUF"] / p["m2"]:.1f} UF/m²{db_txt} · {days} día{"s" if days != 1 else ""}</div>
   </div>
- </div>
- <div class="band"><div class="mid"></div><div class="dot" style="left:{pos:.0f}%"></div></div>
- <div class="bandlbl"><span>−40% (barata)</span><span>mediana zona</span><span>+40%</span></div>
- <div class="comp">{e['ufm2']:.1f} UF/m² vs {e['med']:.1f} mediana ({esc(e['med_scope'])}, n={e['med_n']})</div>
- <div>{badges}</div>{rat_html}
- <a class="btn" href="{esc(p['url'] or '#')}" target="_blank" rel="noreferrer">Ver aviso</a>
-</div>""")
-    crit_html = ""
-    z = stats.get("zona")
-    if z:
-        esc = html.escape
-        pct = cfg.get("min_score", 0.15) * 100
-        label = "casas analizadas" if z["all_casas"] else "propiedades analizadas"
-        crit_html = f"""
-<div class="card">
- <div class="crit-title">Criterios de la zona — {esc(z["sector"])}</div>
- <div class="crit-grid">
-  <div><b>{z["n"]}</b> {label}</div>
-  <div><b>{z["med_ufm2"]:.1f}</b> UF/m² mediana</div>
-  <div><b>{z["p25"]:.1f}–{z["p75"]:.1f}</b> UF/m² rango típico (p25–p75)</div>
-  <div><b>{z["med_m2"]:.0f} m²</b> superficie mediana</div>
-  <div><b>UF {z["med_uf"]:,.0f}</b> precio mediano</div>
- </div>
- <div class="crit-rule">Se listan las propiedades ≥{pct:.0f}% bajo la mediana UF/m² del sector; el porcentaje de cada tarjeta indica su distancia a esa mediana.</div>
+ </div>{extra_html}
+ <div>{badges}</div>
+ <div class="links">{btns}</div>
 </div>"""
-    body = crit_html + ("\n".join(cards) or '<div class="card">Sin oportunidades sobre el umbral hoy. La base sigue acumulando historial: mañana habrá más comparables.</div>')
+
+
+FAVS_JS = """
+(function(){
+var KEY='radar_favs';
+var DATA=JSON.parse(document.getElementById('inv-data').textContent);
+function getFavs(){try{var v=JSON.parse(localStorage.getItem(KEY));return Array.isArray(v)?v:[]}catch(e){return[]}}
+function setFavs(f){localStorage.setItem(KEY,JSON.stringify(f))}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function cardHTML(pid,p){
+ var links=p.links.length>1
+   ?p.links.map(function(u,i){return '<a class="btn" href="'+esc(u)+'" target="_blank" rel="noreferrer">Aviso '+(i+1)+'</a>'}).join(' ')
+   :'<a class="btn" href="'+esc(p.links[0]||'#')+'" target="_blank" rel="noreferrer">Ver aviso</a>';
+ var badges='';
+ if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
+ if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
+ var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
+ var img=p.img?'<img src="'+esc(p.img)+'" alt="" loading="lazy">':'';
+ var price=(p.act?'UF ':'último precio UF ')+p.uf.toLocaleString('es-CL');
+ return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">★</button>'+
+  '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
+  '<span class="price">'+price+'</span>'+
+  '<div class="title">'+esc(p.t)+'</div>'+
+  '<div class="meta">'+esc(p.s)+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+p.days+' días</div>'+
+  '</div></div><div>'+badges+'</div><div class="links">'+links+'</div></div>';
+}
+function renderFavs(){
+ var favs=getFavs(),box=document.getElementById('favs-list');
+ var known=favs.filter(function(pid){return DATA[pid]});
+ if(!known.length){box.innerHTML='<div class="empty">Toca ☆ en una tarjeta para guardarla aquí. Se recuerdan en este navegador.</div>';}
+ else{box.innerHTML=known.map(function(pid){return cardHTML(pid,DATA[pid])}).join('');}
+ document.getElementById('fav-export').style.display=known.length?'':'none';
+ syncStars();
+}
+function syncStars(){
+ var favs=getFavs();
+ document.querySelectorAll('.fav-btn').forEach(function(b){
+  b.textContent=favs.indexOf(b.dataset.pid)>=0?'★':'☆';
+ });
+}
+function toggleFav(pid){
+ var favs=getFavs(),i=favs.indexOf(pid);
+ if(i>=0)favs.splice(i,1);else favs.push(pid);
+ setFavs(favs);renderFavs();
+}
+function exportFavs(btn){
+ var favs=getFavs().filter(function(pid){return DATA[pid]});
+ var text=favs.map(function(pid){var p=DATA[pid];
+  return p.t+' — '+p.s+' — UF '+p.uf.toLocaleString('es-CL')+' — '+p.m2+' m²'+(p.act?'':' — ya no publicada')+'\\n'+p.links.join('\\n');
+ }).join('\\n\\n');
+ function done(){btn.textContent='Copiado ✓';setTimeout(function(){btn.textContent='Exportar'},1500)}
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,function(){fallback()})}
+ else fallback();
+ function fallback(){var ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){}document.body.removeChild(ta)}
+}
+document.addEventListener('click',function(e){
+ var b=e.target.closest('.fav-btn');
+ if(b){toggleFav(b.dataset.pid);return}
+ var x=e.target.closest('#fav-export');
+ if(x)exportFavs(x);
+});
+renderFavs();
+})();
+"""
+
+
+def render_report(props, cfg):
+    esc = html.escape
+    today = date.today().isoformat()
+    zona = cfg.get("zona_label", "la comuna")
+    active = {
+        pid: p
+        for pid, p in props.items()
+        if p.get("ptype") == "casa" and days_since(p["lastSeen"]) <= INACTIVE_DAYS
+    }
+
+    # --- encabezado
+    ufm2s = sorted(p["priceUF"] / p["m2"] for p in active.values()) or [0]
+    prices = sorted(p["priceUF"] for p in active.values()) or [0]
+    med_ufm2 = statistics.median(ufm2s)
+    med_uf = statistics.median(prices)
+    now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
+
+    # --- nuevas hoy (tras dedup: firstSeen de hoy, no republicaciones)
+    new_today = {pid: p for pid, p in active.items() if p["firstSeen"] == today}
+    first_day = bool(active) and len(new_today) == len(active)
+    note = (
+        '<div class="note">Primer día del inventario: toda la base es nueva, '
+        "por eso todas las propiedades aparecen como “Nuevas hoy”. Desde "
+        "mañana esta sección solo mostrará ingresos reales.</div>"
+        if first_day
+        else ""
+    )
+    if first_day:
+        new_cards = ""
+    else:
+        new_cards = "".join(
+            card_html(pid, p, extra_badges='<span class="badge b-g">nueva hoy</span>')
+            for pid, p in sorted(new_today.items(), key=lambda kv: kv[1]["priceUF"])
+        ) or '<div class="empty">Sin propiedades nuevas hoy.</div>'
+
+    # --- cambios de precio de hoy
+    chg_cards = []
+    for pid, p in active.items():
+        hist = p["priceHist"]
+        if len(hist) >= 2 and hist[-1]["d"] == today:
+            prev, new = hist[-2]["uf"], hist[-1]["uf"]
+            pct = (new - prev) / prev * 100
+            cls, sign = ("down", "−") if new < prev else ("up", "+")
+            chg = (
+                f'<div class="pchg {cls}">UF {prev:,} → UF {new:,} '
+                f"({sign}{abs(pct):.1f}%)</div>"
+            )
+            chg_cards.append((pct, card_html(pid, p, extra_html=chg)))
+    chg_cards.sort(key=lambda t: t[0])
+    chg_html = "".join(c for _, c in chg_cards) or '<div class="empty">Sin cambios de precio hoy.</div>'
+
+    # --- inventario completo: por sector y luego precio
+    inv_parts = []
+    by_sector = {}
+    for pid, p in active.items():
+        by_sector.setdefault(p.get("sector") or "Otros sectores", []).append((pid, p))
+    for sector in sorted(by_sector, key=lambda s: (s == "Otros sectores", s)):
+        group = sorted(by_sector[sector], key=lambda kv: kv[1]["priceUF"])
+        inv_parts.append(f'<h3 class="grp">{esc(sector)} ({len(group)})</h3>')
+        inv_parts.extend(card_html(pid, p) for pid, p in group)
+    inv_html = "".join(inv_parts) or '<div class="empty">Inventario vacío.</div>'
+
+    # --- JSON embebido (activas + inactivas, para favoritas)
+    inv_data = {
+        pid: prop_public(pid, p, pid in active) for pid, p in props.items()
+    }
+    inv_json = json.dumps(inv_data, ensure_ascii=False).replace("</", "<\\/")
+
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Radar Inmobiliario — {date.today().isoformat()}</title>
+<title>Radar {esc(zona)} — {today}</title>
 <style>{CSS}</style></head><body>
 <header><div class="wrap">
- <h1>RADAR INMOBILIARIO</h1>
- <div class="sub">{date.today().isoformat()} · {stats['n_props']:,} propiedades · {stats['listings']:,} avisos · {today_new} nuevas hoy · actualizado {now}</div>
+ <h1>RADAR {esc(zona.upper())}</h1>
+ <div class="sub">{today} · {len(active):,} casas activas · mediana {med_ufm2:.1f} UF/m² · precio mediano UF {med_uf:,.0f} · actualizado {now}</div>
 </div></header>
-<div class="wrap">{body}</div>
-<footer>Score contra precios de lista, no de venta. Verifica siempre en terreno, títulos y recepción final antes de decidir.</footer>
+<div class="wrap">
+{note}
+<h2 class="sec">Mis seleccionadas</h2>
+<div id="favs-list"></div>
+<button id="fav-export" class="btn" style="display:none">Exportar</button>
+<h2 class="sec">Nuevas hoy ({len(new_today)})</h2>
+{new_cards}
+<h2 class="sec">Cambios de precio ({len(chg_cards)})</h2>
+{chg_html}
+<h2 class="sec">Inventario completo ({len(active)})</h2>
+{inv_html}
+</div>
+<footer>Inventario deduplicado de avisos públicos: los precios son de lista, no de venta. Propiedades sin aparecer por {INACTIVE_DAYS} días se retiran del inventario (vendidas o despublicadas). Verifica siempre en terreno y títulos antes de decidir.</footer>
+<script type="application/json" id="inv-data">{inv_json}</script>
+<script>{FAVS_JS}</script>
 </body></html>""", encoding="utf-8")
-    print(f"Reporte generado: {REPORT_PATH} ({len(entries)} oportunidades, {today_new} nuevas)")
+    inactive_n = len(props) - len(active)
+    print(f"Reporte generado: {REPORT_PATH} ({len(active)} activas, "
+          f"{len(new_today)} nuevas hoy, {len(chg_cards)} cambios de precio, "
+          f"{inactive_n} inactivas conservadas)")
 
 
 # ---------------------------------------------------------------- main
 
 
-def sector_view(props, cfg):
-    """Con sector_filtro, restringe scoring/criterios/reporte a propiedades
-    del sector; la base completa se conserva para dedup e historial (p. ej.
-    propiedades genéricas ingeridas antes de enfocar el radar)."""
-    sector = _fold((cfg.get("sector_filtro") or "").strip())
-    if not sector:
-        return props
-    view = {pid: p for pid, p in props.items() if _sector_match(p, sector)}
-    if len(view) != len(props):
-        print(f"Vista de sector '{cfg['sector_filtro']}': "
-              f"{len(view)}/{len(props)} propiedades de la base")
-    return view
-
-
 def main():
     cfg = load_json(CONFIG_PATH, {})
     db = load_json(DB_PATH, {"props": {}})
-    shown = load_json(SHOWN_PATH, {})
     props = db["props"]
+    migrate_db(props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
     ingest(items, props, uf, cfg)
 
-    view = sector_view(props, cfg)
-    entries = score_all(view, cfg)
-    top = [e for e in entries if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
-    add_rationales(top, props, cfg)
-    top = [e for e in score_all(view, cfg) if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
-
-    stats = {
-        "n_props": len(view),
-        "listings": sum(len(p["ids"]) for p in view.values()),
-        "zona": zone_criteria(view, cfg),
-    }
-    render_report(top, stats, cfg, shown)
-
-    for e in top:  # registrar como mostradas (al precio actual)
-        shown[e["pid"]] = min(shown.get(e["pid"], 10**9), e["p"]["priceUF"])
+    render_report(props, cfg)
     save_json(DB_PATH, {"props": props, "updated": datetime.now(timezone.utc).isoformat()})
-    save_json(SHOWN_PATH, shown)
     print("Pipeline OK")
 
 
