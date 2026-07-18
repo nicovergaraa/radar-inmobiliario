@@ -1,9 +1,15 @@
 {
   "operacion": "venta",
-  "zona_label": "Lo Barnechea",
+  "zonas": {
+    "lo-barnechea": "Lo Barnechea",
+    "zapallar": "Zapallar"
+  },
   "comunas": [],
   "search_paths": [
-    "/venta/casa/lo-barnechea-metropolitana"
+    "/venta/casa/lo-barnechea-metropolitana",
+    "/venta/terreno/lo-barnechea-metropolitana",
+    "/venta/casa/zapallar-valparaiso",
+    "/venta/terreno/zapallar-valparaiso"
   ],
   "exhaustivo": true,
   "paginas": 10,

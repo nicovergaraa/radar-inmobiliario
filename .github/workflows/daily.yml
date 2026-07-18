@@ -2,7 +2,9 @@ name: Radar diario
 
 on:
   schedule:
-    - cron: "0 11 * * *"   # 11:00 UTC ≈ 7-8 AM Chile (según horario de verano)
+    - cron: "0 7 * * *"    # 07:00 UTC = 3 AM Chile en invierno, 4 AM en verano
+                           # (Actions solo entiende UTC fijo y puede variar
+                           # ±15-30 min según carga de GitHub)
   workflow_dispatch: {}      # permite ejecutarlo a mano desde la pestaña Actions
 
 permissions:

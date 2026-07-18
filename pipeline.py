@@ -16,7 +16,7 @@ import statistics
 import sys
 import time
 import unicodedata
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -440,9 +440,19 @@ def _slugify(s):
 def _ptype_from_path(path):
     if "departamento" in path or "depto" in path:
         return "depto"
+    if "terreno" in path or "sitio" in path or "lote" in path:
+        return "terreno"
     if "casa" in path:
         return "casa"
     return "otro"
+
+
+def _zona_from_path(path, zonas):
+    """Etiqueta de zona según el slug presente en la ruta ({slug: label})."""
+    for slug, label in (zonas or {}).items():
+        if slug in path:
+            return label
+    return ""
 
 
 def _path_variants(path):
@@ -482,11 +492,12 @@ MAX_EXHAUSTIVE_PAGES = 80  # tope de seguridad del modo exhaustivo
 
 
 def fetch_pages(cfg):
-    """Scrapea resultados públicos de Portal Inmobiliario. Con
-    cfg["search_paths"] usa esas rutas en vez de las genéricas, probando
-    variantes menos específicas si la configurada no entrega avisos. Con
-    cfg["exhaustivo"] pagina hasta agotar el listado (página vacía o solo
-    avisos repetidos); si no, respeta cfg["paginas"]."""
+    """Scrapea resultados públicos de Portal Inmobiliario. Cada ruta de
+    cfg["search_paths"] define su tipo (casa/terreno) y su zona (según
+    cfg["zonas"]); si el slug configurado no entrega avisos se prueban
+    variantes menos específicas, y si la ruta devuelve resultados que no
+    mencionan la zona, se aplica un filtro por texto como respaldo. Con
+    cfg["exhaustivo"] pagina hasta agotar cada listado."""
     session = requests.Session()
     session.headers.update(
         {
@@ -497,14 +508,16 @@ def fetch_pages(cfg):
     )
     custom = [p if p.startswith("/") else "/" + p
               for p in (cfg.get("search_paths") or [])]
-    searches = [(_ptype_from_path(p), p) for p in custom] or PI_SEARCHES
+    zonas = cfg.get("zonas") or {}
+    if custom:
+        searches = [(_ptype_from_path(p), p, _zona_from_path(p, zonas)) for p in custom]
+    else:
+        searches = [(t, p, "") for t, p in PI_SEARCHES]
     exhaustive = bool(cfg.get("exhaustivo"))
     per_search = max(1, max(1, cfg.get("paginas", 10)) // len(searches))
-    sector = _fold((cfg.get("sector_filtro") or "").strip())
-    sector_slug = _slugify(cfg.get("sector_filtro") or "")
 
     items, seen = [], set()
-    for ptype, path in searches:
+    for ptype, path, zona in searches:
         # descarga de prueba: encontrar una ruta que entregue avisos
         working = first = None
         for cand in (_path_variants(path) if custom else [path]):
@@ -515,7 +528,8 @@ def fetch_pages(cfg):
             batch, strategy = parse_search_page(page, ptype) if status == 200 else ([], "-")
             if batch:
                 working, first = cand, (batch, strategy)
-                print(f"Ruta OK: {cand} ({len(batch)} avisos en la primera página)")
+                print(f"Ruta OK para {zona or 'genérica'}/{ptype}: {cand} "
+                      f"({len(batch)} avisos en la primera página)")
                 break
             print(f"Ruta {cand}: HTTP {status} / 0 avisos; pruebo variante")
             time.sleep(2.5)
@@ -523,21 +537,17 @@ def fetch_pages(cfg):
             print(f"ADVERTENCIA: ninguna variante de {path} entregó avisos; "
                   "salto este listado")
             continue
-        # sanidad: el sitio puede aceptar un slug desconocido y devolver
-        # resultados genéricos en vez de 404
-        zona = _fold(cfg.get("zona_label") or "")
-        if custom and zona:
-            hits = sum(
-                1 for b in first[0]
-                if zona in _fold(" ".join(
-                    str(b.get(k) or "") for k in ("comuna", "sector", "loc", "title")))
-            )
+        # respaldo: si la primera página no menciona mayormente la zona, el
+        # sitio está devolviendo resultados genéricos → filtrar por texto
+        text_filter = ""
+        zf = _fold(zona)
+        if zf:
+            hits = sum(1 for b in first[0] if _sector_match(b, zf))
             if hits < len(first[0]) / 2:
+                text_filter = zf
                 print(f"ADVERTENCIA: solo {hits}/{len(first[0])} avisos de la "
-                      f"primera página mencionan '{cfg['zona_label']}'; la ruta "
-                      "podría estar devolviendo resultados genéricos")
-        # si la ruta ya es específica del sector, no hay que filtrar después
-        specific = bool(sector_slug) and sector_slug in working
+                      f"primera página mencionan '{zona}'; aplico filtro por "
+                      "texto como respaldo")
 
         offset = page_n = 0
         while True:
@@ -556,21 +566,24 @@ def fetch_pages(cfg):
                     return items
                 batch, strategy = parse_search_page(page, ptype)
             if not batch:
-                print(f"[{ptype}] página {page_n + 1} sin avisos; fin del listado")
+                print(f"[{zona}/{ptype}] página {page_n + 1} sin avisos; "
+                      "fin del listado")
                 break
             fresh = [b for b in batch if b["lid"] not in seen]
             if exhaustive and not fresh:
-                print(f"[{ptype}] página {page_n + 1} solo repite avisos ya "
-                      "vistos; fin del listado")
+                print(f"[{zona}/{ptype}] página {page_n + 1} solo repite "
+                      "avisos ya vistos; fin del listado")
                 break
             seen.update(b["lid"] for b in fresh)
             kept = fresh
             note = ""
-            if sector and not specific:
-                kept = [b for b in fresh if _sector_match(b, sector)]
-                note = f", {len(kept)} tras filtro de sector"
+            if text_filter:
+                kept = [b for b in fresh if _sector_match(b, text_filter)]
+                note = f", {len(kept)} tras filtro de zona"
+            for b in kept:
+                b["zona"] = zona
             items.extend(kept)
-            print(f"[{ptype}] página {page_n + 1} vía {strategy}: "
+            print(f"[{zona}/{ptype}] página {page_n + 1} vía {strategy}: "
                   f"{len(batch)} avisos{note} (acumulado {len(items)})")
             offset += len(batch)
             page_n += 1
@@ -608,6 +621,7 @@ def parse_item(item, uf_value):
             "title": (item.get("title") or "")[:90],
             "comuna": comuna,
             "sector": item.get("sector"),
+            "zona": item.get("zona") or "",
             "ptype": item.get("ptype", "otro"),
             "op": op,
             "m2": m2,
@@ -651,14 +665,34 @@ def _walk_pictures(node, add, depth=0):
             _walk_pictures(v, add, depth + 1)
 
 
+RX_PUBLICADO = re.compile(
+    r"[Pp]ublicado\s+hace\s+(\d+)\s+(d[ií]as?|horas?|semanas?|mes(?:es)?|años?)"
+)
+
+
+def _parse_pub_date(page):
+    """'Publicado hace 3 meses' → fecha estimada ISO, o None."""
+    m = RX_PUBLICADO.search(page)
+    if not m:
+        return None
+    n, unit = int(m.group(1)), _fold(m.group(2))
+    days = (0 if unit.startswith("hora")
+            else n if unit.startswith("dia")
+            else n * 7 if unit.startswith("semana")
+            else n * 30 if unit.startswith("mes")
+            else n * 365)
+    return (date.today() - timedelta(days=days)).isoformat()
+
+
 def fetch_detail_photos(session, url):
     """Descarga la página de detalle de un aviso y extrae hasta 4 URLs de su
-    galería: JSON embebido primero, luego <img> del HTML. Devuelve
-    (ok, urls); ok=False si la página no respondió 200 (no marcar como
-    visitada para reintentar otro día)."""
+    galería (JSON embebido primero, luego <img> del HTML) más la fecha
+    estimada de publicación ('Publicado hace X'). Devuelve (ok, urls, pub);
+    ok=False si la página no respondió 200 (no marcar como visitada, para
+    reintentar otro día)."""
     status, page = _get_search_html(session, url)
     if status != 200:
-        return False, []
+        return False, [], None
     urls = []
 
     def add(u):
@@ -681,7 +715,7 @@ def fetch_detail_photos(session, url):
             ".andes-carousel-snapped img, figure img"
         ):
             add(img.get("data-zoom") or img.get("data-src") or img.get("src"))
-    return True, urls[:4]
+    return True, urls[:4], _parse_pub_date(page)
 
 
 def _hash_image_urls(session, urls, stats):
@@ -700,7 +734,7 @@ def _hash_image_urls(session, urls, stats):
     return hashes
 
 
-def hash_new_photos(items, hashed, detailed):
+def hash_new_photos(items, hashed, detailed, pubdates=None):
     """Descarga y hashea (pHash) fotos de avisos. Cache {lid: [hash]}: un lid
     hasheado nunca vuelve a descargar sus fotos; {lid: 1} en `detailed`
     marca que su página de detalle ya se visitó (una vez en la vida).
@@ -712,6 +746,7 @@ def hash_new_photos(items, hashed, detailed):
     stats = {"imgs": 0, "fail": 0}
     budget = DETAIL_PAGE_BUDGET
     n_detail = 0
+    pubdates = pubdates if pubdates is not None else {}
 
     # 1) avisos nuevos (sin entrada en cache)
     new_items, seen_here = [], set()
@@ -726,10 +761,12 @@ def hash_new_photos(items, hashed, detailed):
         if len(photos) < 2 and it.get("url") and budget > 0:
             time.sleep(2)  # pausa entre páginas de detalle
             budget -= 1
-            ok, gallery = fetch_detail_photos(session, it["url"])
+            ok, gallery, pub = fetch_detail_photos(session, it["url"])
             if ok:
                 n_detail += 1
                 detailed[lid] = 1
+                if pub:
+                    pubdates[lid] = pub
                 for u in photos:
                     if u not in gallery:
                         gallery.append(u)
@@ -749,11 +786,13 @@ def hash_new_photos(items, hashed, detailed):
         ]
         for lid in backlog[:budget]:
             time.sleep(2)
-            ok, gallery = fetch_detail_photos(session, url_by_lid[lid])
+            ok, gallery, pub = fetch_detail_photos(session, url_by_lid[lid])
             if not ok:
                 continue
             n_detail += 1
             detailed[lid] = 1
+            if pub:
+                pubdates[lid] = pub
             new_hashes = _hash_image_urls(session, gallery, stats)
             cur = hashed.get(lid, [])
             hashed[lid] = cur + [h for h in new_hashes if h not in cur]
@@ -834,9 +873,16 @@ def find_match(cand, props, counters=None):
             or p["op"] != cand["op"]
         ):
             continue
+        pz = p.get("zona") or p.get("scope") or ""
+        cz = cand.get("zona") or ""
+        if pz and cz and pz != cz:
+            continue
         if abs(p["m2"] - cand["m2"]) / p["m2"] > 0.05:
             continue
-        if (p.get("dorms") or 0) != (cand.get("dorms") or 0):
+        # dormitorios: None vs None (típico en terrenos) es compatible;
+        # solo descarta cuando ambos lados declaran valores distintos
+        pd, cd = p.get("dorms"), cand.get("dorms")
+        if pd is not None and cd is not None and pd != cd:
             continue
         pm = photos_match(cand.get("phashes"), p.get("phashes"))
         if pm:
@@ -846,19 +892,22 @@ def find_match(cand, props, counters=None):
             cn["url_foto"] = cn.get("url_foto", 0) + 1
             return pid
         if pm is False:
-            # ambos con fotos y distintas: son casas diferentes
+            # ambos con fotos y distintas: son propiedades diferentes
             continue
         sim = jaccard(cand_tok, tokenize(p["title"]))
         pdiff = abs(p["priceUF"] - cand["priceUF"]) / max(p["priceUF"], 1)
+        # terrenos: títulos genéricos y sin dormitorios → las señales de
+        # texto/vendedor exigen umbrales más duros; mandan m² (gate) y fotos
+        strict = cand["ptype"] == "terreno"
         if (
             p.get("seller")
             and p["seller"] == cand.get("seller")
-            and sim >= 0.7
-            and pdiff <= 0.10
+            and sim >= (0.8 if strict else 0.7)
+            and pdiff <= (0.05 if strict else 0.10)
         ):
             cn["vendedor"] = cn.get("vendedor", 0) + 1
             return pid
-        if sim >= 0.85 and pdiff <= 0.10:
+        if sim >= (0.9 if strict else 0.85) and pdiff <= (0.05 if strict else 0.10):
             cn["texto"] = cn.get("texto", 0) + 1
             return pid
     return None
@@ -914,14 +963,34 @@ def refill_phashes(props, hashed):
             merge_phashes(p, hashed.get(str(lid), []))
 
 
+def refill_pub_dates(props, pubdates):
+    """Propaga la fecha declarada de publicación ({lid: iso}) a las
+    propiedades; con múltiples avisos vinculados conserva la más antigua."""
+    for p in props.values():
+        dates = [pubdates[str(l)] for l in p["listings"] if str(l) in pubdates]
+        if p.get("pub_estimada"):
+            dates.append(p["pub_estimada"])
+        if dates:
+            p["pub_estimada"] = min(dates)
+
+
+def humanize_days(n):
+    if n < 1:
+        return "hoy"
+    if n < 30:
+        return f"{n} día{'s' if n != 1 else ''}"
+    if n < 365:
+        m = max(1, round(n / 30))
+        return f"~{m} mes{'es' if m != 1 else ''}"
+    y = max(1, round(n / 365))
+    return f"~{y} año{'s' if y != 1 else ''}"
+
+
 def ingest(items, props, uf_value, cfg, hashed=None):
     today = date.today().isoformat()
     added = merged = changes = 0
     hashed = hashed or {}
     counters = {}
-    # marca de scope: el reporte solo muestra propiedades vistas por la
-    # configuración vigente; lo demás queda en la base como historial
-    scope = cfg.get("zona_label") or ""
     comunas_filter = {c.strip().lower() for c in cfg.get("comunas", []) if c.strip()}
     for raw in items:
         c = parse_item(raw, uf_value)
@@ -953,13 +1022,16 @@ def ingest(items, props, uf_value, cfg, hashed=None):
             if c.get("sector") and not p.get("sector"):
                 p["sector"] = c["sector"]
             merge_phashes(p, c["phashes"])
-            p.update(priceUF=c["priceUF"], lastSeen=today, scope=scope,
-                     url=c["url"] or p["url"])
+            # marca de scope/zona: el reporte solo muestra propiedades vistas
+            # por la configuración vigente; el resto queda como historial
+            zona = c.get("zona") or p.get("zona") or p.get("scope") or ""
+            p.update(priceUF=c["priceUF"], lastSeen=today, scope=zona,
+                     zona=zona, url=c["url"] or p["url"])
         else:
             props["p" + c["lid"]] = {
                 **c,
                 "listings": {c["lid"]: c["url"]},
-                "scope": scope,
+                "scope": c.get("zona") or "",
                 "firstSeen": today,
                 "lastSeen": today,
                 "priceHist": [{"d": today, "uf": c["priceUF"]}],
@@ -1161,6 +1233,11 @@ a.btn{display:inline-block;margin:10px 8px 0 0;padding:10px 14px;min-height:40px
 button.btn{margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;background:#fff;color:var(--deep);font-weight:600;font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
 .fav-btn{position:absolute;top:8px;right:8px;width:44px;height:44px;border:none;background:none;font-size:24px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
 .note{background:var(--asoft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.4}
+.chip-group{display:flex;flex-wrap:wrap;margin:6px 0}
+.chip{min-height:40px;min-width:40px;padding:8px 14px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
+.chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
+#inv-list:not(.show-zona) .zt-z{display:none}
+#inv-list:not(.show-tipo) .zt-t{display:none}
 .empty{font-size:13px;color:var(--muted);margin:8px 0 4px}
 footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;line-height:1.5}
 """
@@ -1183,6 +1260,9 @@ def prop_public(pid, p, active):
         "img": (p.get("thumb") or ""),
         "fs": p["firstSeen"],
         "hist": p["priceHist"],
+        "z": p.get("zona") or p.get("scope") or "",
+        "pt": p.get("ptype") or "",
+        "pub": p.get("pub_estimada"),
     }
 
 
@@ -1208,14 +1288,25 @@ def card_html(pid, p, extra_html="", extra_badges=""):
     if p.get("baths"):
         db_txt += f'/{p["baths"]:.0f}B'
     days = days_since(p["firstSeen"])
+    zona = p.get("zona") or p.get("scope") or ""
+    pub_txt = ""
+    if p.get("pub_estimada"):
+        pub_txt = (' · publicado hace '
+                   f'{humanize_days(days_since(p["pub_estimada"]))}')
+    meta = (
+        f'<span class="zt zt-z">{esc(zona)} · </span>'
+        f'<span class="zt zt-t">{esc(p.get("ptype", ""))} · </span>'
+        f'{esc(sector)} · {p["m2"]:.0f} m² · {p["priceUF"] / p["m2"]:.1f} UF/m²'
+        f'{db_txt} · {days} día{"s" if days != 1 else ""} en radar{pub_txt}'
+    )
     return f"""
-<div class="card prop">
+<div class="card prop" data-zona="{esc(zona)}" data-ptype="{esc(p.get("ptype", ""))}" data-sector="{esc(p.get("comuna") or "")}">
  <button class="fav-btn" data-pid="{esc(pid)}" aria-label="marcar favorita">☆</button>
  <div class="row">{img}
   <div style="min-width:0;flex:1">
    <span class="price">UF {p["priceUF"]:,}</span>
    <div class="title">{esc(p["title"])}</div>
-   <div class="meta">{esc(sector)} · {p["m2"]:.0f} m² · {p["priceUF"] / p["m2"]:.1f} UF/m²{db_txt} · {days} día{"s" if days != 1 else ""}</div>
+   <div class="meta">{meta}</div>
   </div>
  </div>{extra_html}
  <div>{badges}</div>
@@ -1231,6 +1322,12 @@ function getFavs(){try{var v=JSON.parse(localStorage.getItem(KEY));return Array.
 function setFavs(f){localStorage.setItem(KEY,JSON.stringify(f))}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function uf(n){return n.toLocaleString('es-CL')}
+function humanDays(n){
+ if(n<1)return 'hoy';
+ if(n<30)return n+(n===1?' día':' días');
+ if(n<365){var m=Math.max(1,Math.round(n/30));return '~'+m+(m===1?' mes':' meses')}
+ var y=Math.max(1,Math.round(n/365));return '~'+y+(y===1?' año':' años');
+}
 function cardHTML(pid,p,extra){
  var links=p.links.length>1
    ?p.links.map(function(u,i){return '<a class="btn" href="'+esc(u)+'" target="_blank" rel="noreferrer">Aviso '+(i+1)+'</a>'}).join(' ')
@@ -1241,12 +1338,45 @@ function cardHTML(pid,p,extra){
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
  var img=p.img?'<img src="'+esc(p.img)+'" alt="" loading="lazy">':'';
  var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
+ var zt=(p.z?esc(p.z)+' · ':'')+(p.pt?esc(p.pt)+' · ':'');
+ var pub='';
+ if(p.pub){var pd=Math.max(0,Math.round((Date.now()-new Date(p.pub+'T12:00:00'))/864e5));pub=' · publicado hace '+humanDays(pd)}
  return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">☆</button>'+
   '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
   '<span class="price">'+price+'</span>'+
   '<div class="title">'+esc(p.t)+'</div>'+
-  '<div class="meta">'+esc(p.s)+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+p.days+' días</div>'+
+  '<div class="meta">'+zt+esc(p.s)+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+p.days+' días en radar'+pub+'</div>'+
   '</div></div>'+(extra||'')+'<div>'+badges+'</div><div class="links">'+links+'</div></div>';
+}
+var FKEY='radar_filters';
+function getFilters(){
+ try{var f=JSON.parse(localStorage.getItem(FKEY))||{};
+  return {z:f.z||'all',t:f.t||'all',s:f.s||'all'}}catch(e){return {z:'all',t:'all',s:'all'}}
+}
+function mainSectors(){
+ return Array.prototype.map.call(
+  document.querySelectorAll('#filter-bar [data-group="s"] .chip'),
+  function(c){return c.dataset.v}
+ ).filter(function(v){return v!=='all'&&v!=='__otros__'});
+}
+function applyFilters(){
+ var f=getFilters(),n=0,MAIN=mainSectors();
+ document.querySelectorAll('#inv-list .prop').forEach(function(c){
+  var okz=f.z==='all'||c.dataset.zona===f.z;
+  var okt=f.t==='all'||c.dataset.ptype===f.t;
+  var sec=c.dataset.sector||'';
+  var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
+  var ok=okz&&okt&&oks;
+  c.style.display=ok?'':'none';
+  if(ok)n++;
+ });
+ document.getElementById('inv-count').textContent=n+(n===1?' propiedad':' propiedades');
+ document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
+  ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
+ });
+ var il=document.getElementById('inv-list');
+ il.classList.toggle('show-zona',f.z==='all');
+ il.classList.toggle('show-tipo',f.t==='all');
 }
 function renderFavs(){
  var favs=getFavs(),box=document.getElementById('favs-list');
@@ -1319,6 +1449,14 @@ document.addEventListener('click',function(e){
  var b=e.target.closest('.fav-btn');
  if(b){toggleFav(b.dataset.pid);return}
  if(e.target.closest('#fav-export')){exportFavs(e.target.closest('#fav-export'));return}
+ var chp=e.target.closest('#filter-bar .chip');
+ if(chp){
+  var f=getFilters();
+  f[chp.parentElement.dataset.group]=chp.dataset.v;
+  localStorage.setItem(FKEY,JSON.stringify(f));
+  applyFilters();
+  return;
+ }
  var m=e.target.closest('#mark-seen');
  if(m){
   localStorage.setItem(LV_KEY,new Date().toISOString());
@@ -1329,29 +1467,77 @@ document.addEventListener('click',function(e){
 });
 renderFavs();
 renderNews();
+applyFilters();
 })();
 """
+
+
+PT_LABEL = {"casa": "casas", "terreno": "terrenos", "depto": "deptos"}
 
 
 def render_report(props, cfg):
     esc = html.escape
     today = date.today().isoformat()
-    zona = cfg.get("zona_label", "la comuna")
-    scope = cfg.get("zona_label") or ""
+    zonas = cfg.get("zonas") or {}
+    scopes = set(zonas.values()) or {""}
     active = {
         pid: p
         for pid, p in props.items()
-        if p.get("ptype") == "casa"
-        and p.get("scope", "") == scope
+        if p.get("ptype") in ("casa", "terreno")
+        and p.get("scope", "") in scopes
         and days_since(p["lastSeen"]) <= INACTIVE_DAYS
     }
 
-    # --- encabezado
-    ufm2s = sorted(p["priceUF"] / p["m2"] for p in active.values()) or [0]
-    prices = sorted(p["priceUF"] for p in active.values()) or [0]
-    med_ufm2 = statistics.median(ufm2s)
-    med_uf = statistics.median(prices)
+    # --- encabezado: estadísticas por zona+tipo, nunca mezcladas
+    groups = {}
+    for p in active.values():
+        key = (p.get("zona") or p.get("scope") or "?", p["ptype"])
+        groups.setdefault(key, []).append(p)
+    stat_lines = []
+    for (z, t), ps in sorted(groups.items()):
+        med_ufm2 = statistics.median(q["priceUF"] / q["m2"] for q in ps)
+        med_uf = statistics.median(q["priceUF"] for q in ps)
+        stat_lines.append(
+            f"{esc(z)} · {PT_LABEL.get(t, t)}: {len(ps)} · "
+            f"mediana {med_ufm2:.1f} UF/m² · precio mediano UF {med_uf:,.0f}"
+        )
+    stats_html = "<br>".join(stat_lines)
     now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
+
+    # --- chips de filtro: sectores (campo comuna limpio) con ≥5 propiedades
+    sec_counts = {}
+    for p in active.values():
+        c = p.get("comuna") or ""
+        if c:
+            sec_counts[c] = sec_counts.get(c, 0) + 1
+    main_sectors = sorted(
+        [s for s, n in sec_counts.items() if n >= 5],
+        key=lambda s: -sec_counts[s],
+    )
+    chips_zona = "".join(
+        f'<button class="chip" data-v="{esc(z)}">{esc(z)}</button>'
+        for z in zonas.values()
+    )
+    chips_sector = "".join(
+        f'<button class="chip" data-v="{esc(s)}">{esc(s)} ({sec_counts[s]})</button>'
+        for s in main_sectors
+    )
+    filter_bar = f"""
+<div id="filter-bar">
+ <div class="chip-group" data-group="z">
+  <button class="chip" data-v="all">Todas</button>{chips_zona}
+ </div>
+ <div class="chip-group" data-group="t">
+  <button class="chip" data-v="all">Todos</button>
+  <button class="chip" data-v="casa">Casas</button>
+  <button class="chip" data-v="terreno">Terrenos</button>
+ </div>
+ <div class="chip-group" data-group="s">
+  <button class="chip" data-v="all">Todos los sectores</button>{chips_sector}
+  <button class="chip" data-v="__otros__">Otros</button>
+ </div>
+</div>
+<div class="empty" id="inv-count"></div>"""
 
     # --- novedades: las renderiza JS según la última visita del usuario
     #     (localStorage); aquí solo se calculan los conteos del día para el log
@@ -1375,7 +1561,8 @@ def render_report(props, cfg):
     inv_data = {
         pid: prop_public(pid, p, pid in active)
         for pid, p in props.items()
-        if p.get("ptype") == "casa" and p.get("scope", "") == scope
+        if p.get("ptype") in ("casa", "terreno")
+        and p.get("scope", "") in scopes
     }
     inv_json = json.dumps(inv_data, ensure_ascii=False).replace("</", "<\\/")
 
@@ -1384,11 +1571,11 @@ def render_report(props, cfg):
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Radar {esc(zona)} — {today}</title>
+<title>Radar Inmobiliario — {today}</title>
 <style>{CSS}</style></head><body>
 <header><div class="wrap">
- <h1>RADAR {esc(zona.upper())}</h1>
- <div class="sub">{today} · {len(active):,} casas activas · mediana {med_ufm2:.1f} UF/m² · precio mediano UF {med_uf:,.0f} · actualizado {now}</div>
+ <h1>RADAR INMOBILIARIO</h1>
+ <div class="sub">{today} · {len(active):,} propiedades activas · actualizado {now}<br>{stats_html}</div>
 </div></header>
 <div class="wrap">
 <h2 class="sec">Mis seleccionadas</h2>
@@ -1401,9 +1588,12 @@ def render_report(props, cfg):
 <div id="chg-list"><div class="empty">Cargando…</div></div>
 <button id="mark-seen" class="btn">Marcar todo como visto</button>
 <h2 class="sec">Inventario completo ({len(active)})</h2>
+{filter_bar}
+<div id="inv-list">
 {inv_html}
 </div>
-<footer>Inventario deduplicado de avisos públicos: los precios son de lista, no de venta. Propiedades sin aparecer por {INACTIVE_DAYS} días se retiran del inventario (vendidas o despublicadas). Verifica siempre en terreno y títulos antes de decidir.</footer>
+</div>
+<footer>Inventario deduplicado de avisos públicos: los precios son de lista, no de venta. «Publicado hace» es lo que declara el aviso (se resetea al republicar); «días en radar» es nuestra medición tras deduplicar — si difieren mucho, probable republicación encubierta. Propiedades sin aparecer por {INACTIVE_DAYS} días se retiran del inventario (vendidas o despublicadas). Verifica siempre en terreno y títulos antes de decidir.</footer>
 <script type="application/json" id="inv-data">{inv_json}</script>
 <script>{FAVS_JS}</script>
 </body></html>""", encoding="utf-8")
@@ -1422,20 +1612,23 @@ def main():
     props = db["props"]
     hashed = db.get("hashed", {})      # cache pHash por listing id
     detailed = db.get("detailed", {})  # lids con página de detalle visitada
+    pubdates = db.get("pubdates", {})  # fecha declarada de publicación por lid
     migrate_db(props)
     split_merged(props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
-    hash_new_photos(items, hashed, detailed)
+    hash_new_photos(items, hashed, detailed, pubdates)
     refill_phashes(props, hashed)
     ingest(items, props, uf, cfg, hashed)
+    refill_pub_dates(props, pubdates)
 
     render_report(props, cfg)
     save_json(DB_PATH, {
         "props": props,
         "hashed": hashed,
         "detailed": detailed,
+        "pubdates": pubdates,
         "updated": datetime.now(timezone.utc).isoformat(),
     })
     print("Pipeline OK")
