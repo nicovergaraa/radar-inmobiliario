@@ -1316,6 +1316,7 @@ def card_html(pid, p, extra_html="", extra_badges=""):
 
 FAVS_JS = """
 (function(){
+try{console.log('radar build:',document.querySelector('meta[name="radar-build"]').content)}catch(e){}
 var KEY='radar_favs', LV_KEY='radar_last_visit';
 var DATA=JSON.parse(document.getElementById('inv-data').textContent);
 function getFavs(){try{var v=JSON.parse(localStorage.getItem(KEY));return Array.isArray(v)?v:[]}catch(e){return[]}}
@@ -1595,6 +1596,7 @@ def render_report(props, cfg):
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="radar-build" content="{now}">
 <title>Radar Inmobiliario — {today}</title>
 <style>{CSS}</style></head><body>
 <header><div class="wrap">
