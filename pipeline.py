@@ -1076,6 +1076,8 @@ def prop_public(pid, p, active):
         "rep": p.get("repubs", 0),
         "act": active,
         "img": (p.get("thumb") or ""),
+        "fs": p["firstSeen"],
+        "hist": p["priceHist"],
     }
 
 
@@ -1118,12 +1120,13 @@ def card_html(pid, p, extra_html="", extra_badges=""):
 
 FAVS_JS = """
 (function(){
-var KEY='radar_favs';
+var KEY='radar_favs', LV_KEY='radar_last_visit';
 var DATA=JSON.parse(document.getElementById('inv-data').textContent);
 function getFavs(){try{var v=JSON.parse(localStorage.getItem(KEY));return Array.isArray(v)?v:[]}catch(e){return[]}}
 function setFavs(f){localStorage.setItem(KEY,JSON.stringify(f))}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function cardHTML(pid,p){
+function uf(n){return n.toLocaleString('es-CL')}
+function cardHTML(pid,p,extra){
  var links=p.links.length>1
    ?p.links.map(function(u,i){return '<a class="btn" href="'+esc(u)+'" target="_blank" rel="noreferrer">Aviso '+(i+1)+'</a>'}).join(' ')
    :'<a class="btn" href="'+esc(p.links[0]||'#')+'" target="_blank" rel="noreferrer">Ver aviso</a>';
@@ -1132,13 +1135,13 @@ function cardHTML(pid,p){
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
  var img=p.img?'<img src="'+esc(p.img)+'" alt="" loading="lazy">':'';
- var price=(p.act?'UF ':'último precio UF ')+p.uf.toLocaleString('es-CL');
- return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">★</button>'+
+ var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
+ return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">☆</button>'+
   '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
   '<span class="price">'+price+'</span>'+
   '<div class="title">'+esc(p.t)+'</div>'+
   '<div class="meta">'+esc(p.s)+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+p.days+' días</div>'+
-  '</div></div><div>'+badges+'</div><div class="links">'+links+'</div></div>';
+  '</div></div>'+(extra||'')+'<div>'+badges+'</div><div class="links">'+links+'</div></div>';
 }
 function renderFavs(){
  var favs=getFavs(),box=document.getElementById('favs-list');
@@ -1146,6 +1149,44 @@ function renderFavs(){
  if(!known.length){box.innerHTML='<div class="empty">Toca ☆ en una tarjeta para guardarla aquí. Se recuerdan en este navegador.</div>';}
  else{box.innerHTML=known.map(function(pid){return cardHTML(pid,DATA[pid])}).join('');}
  document.getElementById('fav-export').style.display=known.length?'':'none';
+ syncStars();
+}
+function fmtRef(iso){
+ return new Date(iso).toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
+}
+function renderNews(){
+ var lv=localStorage.getItem(LV_KEY), first=!lv;
+ var ref=(first?new Date(Date.now()-864e5).toISOString():lv).slice(0,10);
+ var isNew=function(d){return first?d>=ref:d>ref};
+ var label=document.getElementById('since-label');
+ label.textContent=first
+   ?'Primera visita en este navegador: se muestran las últimas 24 horas. Al tocar “Marcar todo como visto” se registrará tu última visita.'
+   :'desde el '+fmtRef(lv);
+ var news=[],chgs=[];
+ Object.keys(DATA).forEach(function(pid){
+  var p=DATA[pid];
+  if(!p.act)return;
+  if(isNew(p.fs)){news.push([pid,p]);return}
+  var before=p.hist.filter(function(h){return !isNew(h.d)});
+  if(before.length&&p.hist.length>before.length){
+   var prev=before[before.length-1].uf,cur=p.hist[p.hist.length-1].uf;
+   if(prev!==cur)chgs.push([pid,p,prev,cur]);
+  }
+ });
+ news.sort(function(a,b){return b[1].fs.localeCompare(a[1].fs)||a[1].uf-b[1].uf});
+ chgs.sort(function(a,b){return (a[3]-a[2])/a[2]-(b[3]-b[2])/b[2]});
+ document.getElementById('new-hdr').textContent='Nuevas desde tu última visita ('+news.length+')';
+ document.getElementById('chg-hdr').textContent='Cambios de precio desde tu última visita ('+chgs.length+')';
+ document.getElementById('new-list').innerHTML=news.length
+   ?news.map(function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')}).join('')
+   :'<div class="empty">Sin propiedades nuevas desde tu última visita.</div>';
+ document.getElementById('chg-list').innerHTML=chgs.length
+   ?chgs.map(function(e){
+     var prev=e[2],cur=e[3],pct=(cur-prev)/prev*100;
+     var cls=cur<prev?'down':'up',sign=cur<prev?'−':'+';
+     return cardHTML(e[0],e[1],'<div class="pchg '+cls+'">UF '+uf(prev)+' → UF '+uf(cur)+' ('+sign+Math.abs(pct).toFixed(1)+'%)</div>');
+    }).join('')
+   :'<div class="empty">Sin cambios de precio desde tu última visita.</div>';
  syncStars();
 }
 function syncStars(){
@@ -1162,7 +1203,7 @@ function toggleFav(pid){
 function exportFavs(btn){
  var favs=getFavs().filter(function(pid){return DATA[pid]});
  var text=favs.map(function(pid){var p=DATA[pid];
-  return p.t+' — '+p.s+' — UF '+p.uf.toLocaleString('es-CL')+' — '+p.m2+' m²'+(p.act?'':' — ya no publicada')+'\\n'+p.links.join('\\n');
+  return p.t+' — '+p.s+' — UF '+uf(p.uf)+' — '+p.m2+' m²'+(p.act?'':' — ya no publicada')+'\\n'+p.links.join('\\n');
  }).join('\\n\\n');
  function done(){btn.textContent='Copiado ✓';setTimeout(function(){btn.textContent='Exportar'},1500)}
  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,function(){fallback()})}
@@ -1172,10 +1213,17 @@ function exportFavs(btn){
 document.addEventListener('click',function(e){
  var b=e.target.closest('.fav-btn');
  if(b){toggleFav(b.dataset.pid);return}
- var x=e.target.closest('#fav-export');
- if(x)exportFavs(x);
+ if(e.target.closest('#fav-export')){exportFavs(e.target.closest('#fav-export'));return}
+ var m=e.target.closest('#mark-seen');
+ if(m){
+  localStorage.setItem(LV_KEY,new Date().toISOString());
+  renderNews();
+  m.textContent='Visto ✓';
+  setTimeout(function(){m.textContent='Marcar todo como visto'},1500);
+ }
 });
 renderFavs();
+renderNews();
 })();
 """
 
@@ -1200,50 +1248,23 @@ def render_report(props, cfg):
     med_uf = statistics.median(prices)
     now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
 
-    # --- nuevas hoy (tras dedup: firstSeen de hoy, no republicaciones)
+    # --- novedades: las renderiza JS según la última visita del usuario
+    #     (localStorage); aquí solo se calculan los conteos del día para el log
     new_today = {pid: p for pid, p in active.items() if p["firstSeen"] == today}
-    first_day = bool(active) and len(new_today) == len(active)
-    note = (
-        '<div class="note">Primer día del inventario: toda la base es nueva, '
-        "por eso todas las propiedades aparecen como “Nuevas hoy”. Desde "
-        "mañana esta sección solo mostrará ingresos reales.</div>"
-        if first_day
-        else ""
+    chg_today = sum(
+        1 for p in active.values()
+        if len(p["priceHist"]) >= 2 and p["priceHist"][-1]["d"] == today
     )
-    if first_day:
-        new_cards = ""
-    else:
-        new_cards = "".join(
-            card_html(pid, p, extra_badges='<span class="badge b-g">nueva hoy</span>')
-            for pid, p in sorted(new_today.items(), key=lambda kv: kv[1]["priceUF"])
-        ) or '<div class="empty">Sin propiedades nuevas hoy.</div>'
 
-    # --- cambios de precio de hoy
-    chg_cards = []
-    for pid, p in active.items():
-        hist = p["priceHist"]
-        if len(hist) >= 2 and hist[-1]["d"] == today:
-            prev, new = hist[-2]["uf"], hist[-1]["uf"]
-            pct = (new - prev) / prev * 100
-            cls, sign = ("down", "−") if new < prev else ("up", "+")
-            chg = (
-                f'<div class="pchg {cls}">UF {prev:,} → UF {new:,} '
-                f"({sign}{abs(pct):.1f}%)</div>"
-            )
-            chg_cards.append((pct, card_html(pid, p, extra_html=chg)))
-    chg_cards.sort(key=lambda t: t[0])
-    chg_html = "".join(c for _, c in chg_cards) or '<div class="empty">Sin cambios de precio hoy.</div>'
-
-    # --- inventario completo: por sector y luego precio
-    inv_parts = []
-    by_sector = {}
-    for pid, p in active.items():
-        by_sector.setdefault(p.get("sector") or "Otros sectores", []).append((pid, p))
-    for sector in sorted(by_sector, key=lambda s: (s == "Otros sectores", s)):
-        group = sorted(by_sector[sector], key=lambda kv: kv[1]["priceUF"])
-        inv_parts.append(f'<h3 class="grp">{esc(sector)} ({len(group)})</h3>')
-        inv_parts.extend(card_html(pid, p) for pid, p in group)
-    inv_html = "".join(inv_parts) or '<div class="empty">Inventario vacío.</div>'
+    # --- inventario completo: plano, más recientes primero, precio ascendente
+    inv_sorted = sorted(
+        active.items(),
+        key=lambda kv: (kv[1]["firstSeen"], -kv[1]["priceUF"]),
+        reverse=True,
+    )
+    inv_html = "".join(
+        card_html(pid, p) for pid, p in inv_sorted
+    ) or '<div class="empty">Inventario vacío.</div>'
 
     # --- JSON embebido (activas + inactivas del scope, para favoritas)
     inv_data = {
@@ -1265,14 +1286,15 @@ def render_report(props, cfg):
  <div class="sub">{today} · {len(active):,} casas activas · mediana {med_ufm2:.1f} UF/m² · precio mediano UF {med_uf:,.0f} · actualizado {now}</div>
 </div></header>
 <div class="wrap">
-{note}
 <h2 class="sec">Mis seleccionadas</h2>
 <div id="favs-list"></div>
 <button id="fav-export" class="btn" style="display:none">Exportar</button>
-<h2 class="sec">Nuevas hoy ({len(new_today)})</h2>
-{new_cards}
-<h2 class="sec">Cambios de precio ({len(chg_cards)})</h2>
-{chg_html}
+<h2 class="sec" id="new-hdr">Nuevas desde tu última visita</h2>
+<div class="empty" id="since-label"></div>
+<div id="new-list"><div class="empty">Cargando…</div></div>
+<h2 class="sec" id="chg-hdr">Cambios de precio desde tu última visita</h2>
+<div id="chg-list"><div class="empty">Cargando…</div></div>
+<button id="mark-seen" class="btn">Marcar todo como visto</button>
 <h2 class="sec">Inventario completo ({len(active)})</h2>
 {inv_html}
 </div>
@@ -1282,7 +1304,7 @@ def render_report(props, cfg):
 </body></html>""", encoding="utf-8")
     inactive_n = len(inv_data) - len(active)
     print(f"Reporte generado: {REPORT_PATH} ({len(active)} activas, "
-          f"{len(new_today)} nuevas hoy, {len(chg_cards)} cambios de precio, "
+          f"{len(new_today)} nuevas hoy, {chg_today} cambios de precio hoy, "
           f"{inactive_n} inactivas conservadas)")
 
 
