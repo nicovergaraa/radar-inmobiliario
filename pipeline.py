@@ -923,6 +923,20 @@ def render_report(entries, stats, cfg, shown):
 # ---------------------------------------------------------------- main
 
 
+def sector_view(props, cfg):
+    """Con sector_filtro, restringe scoring/criterios/reporte a propiedades
+    del sector; la base completa se conserva para dedup e historial (p. ej.
+    propiedades genéricas ingeridas antes de enfocar el radar)."""
+    sector = _fold((cfg.get("sector_filtro") or "").strip())
+    if not sector:
+        return props
+    view = {pid: p for pid, p in props.items() if _sector_match(p, sector)}
+    if len(view) != len(props):
+        print(f"Vista de sector '{cfg['sector_filtro']}': "
+              f"{len(view)}/{len(props)} propiedades de la base")
+    return view
+
+
 def main():
     cfg = load_json(CONFIG_PATH, {})
     db = load_json(DB_PATH, {"props": {}})
@@ -933,15 +947,16 @@ def main():
     items = fetch_pages(cfg)
     ingest(items, props, uf, cfg)
 
-    entries = score_all(props, cfg)
+    view = sector_view(props, cfg)
+    entries = score_all(view, cfg)
     top = [e for e in entries if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
     add_rationales(top, props, cfg)
-    top = [e for e in score_all(props, cfg) if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
+    top = [e for e in score_all(view, cfg) if e["score"] >= cfg.get("min_score", 0.15)][: cfg.get("top_n", 50)]
 
     stats = {
-        "n_props": len(props),
-        "listings": sum(len(p["ids"]) for p in props.values()),
-        "zona": zone_criteria(props, cfg),
+        "n_props": len(view),
+        "listings": sum(len(p["ids"]) for p in view.values()),
+        "zona": zone_criteria(view, cfg),
     }
     render_report(top, stats, cfg, shown)
 
