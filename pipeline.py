@@ -17,10 +17,13 @@ import sys
 import time
 import unicodedata
 from datetime import date, datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
+import imagehash
 import requests
 from bs4 import BeautifulSoup
+from PIL import Image
 
 ROOT = Path(__file__).parent
 DB_PATH = ROOT / "data" / "db.json"
@@ -271,15 +274,32 @@ def _listing_from_json(d, ptype):
         m = RX_MLC.search(url)
         lid = m.group(1).replace("-", "") if m else None
 
-    thumb = d.get("thumbnail") or d.get("image") or ""
+    photos = []
+
+    def _add_photo(u):
+        if isinstance(u, dict):
+            u = u.get("url") or u.get("src") or u.get("contentUrl")
+        if isinstance(u, str) and u.startswith("http") and u not in photos:
+            photos.append(u)
+
+    # galería primero (imágenes grandes), thumbnail después
+    pics = d.get("pictures")
+    if isinstance(pics, list):
+        for pc in pics:
+            _add_photo(pc)
+    img = d.get("image")
+    if isinstance(img, list):
+        for u in img:
+            _add_photo(u)
+    else:
+        _add_photo(img)
+    _add_photo(d.get("thumbnail"))
+    photos = photos[:4]
+    thumb = d.get("thumbnail")
     if isinstance(thumb, dict):
-        thumb = thumb.get("url") or thumb.get("contentUrl") or ""
-    if isinstance(thumb, list):
-        thumb = thumb[0] if thumb else ""
-    if not thumb:
-        pics = d.get("pictures")
-        if isinstance(pics, list) and pics and isinstance(pics[0], dict):
-            thumb = pics[0].get("url") or pics[0].get("src") or ""
+        thumb = thumb.get("url") or thumb.get("contentUrl")
+    if not isinstance(thumb, str) or not thumb:
+        thumb = photos[0] if photos else ""
 
     texts = []
     _texts_of(d, texts)
@@ -314,6 +334,7 @@ def _listing_from_json(d, ptype):
         "loc": loc_text,
         "url": url or None,
         "thumb": thumb or "",
+        "photos": photos,
         "seller": (d.get("seller") or {}).get("id")
         if isinstance(d.get("seller"), dict)
         else None,
@@ -360,6 +381,7 @@ def _listings_from_html(page, ptype):
                     sector = parts[-3]
         img = card.select_one("img")
         thumb = (img.get("data-src") or img.get("src") or "") if img else ""
+        photos = [thumb] if thumb.startswith("http") else []
         mid = RX_MLC.search(url)
         out.append(
             {
@@ -375,6 +397,7 @@ def _listings_from_html(page, ptype):
                 "loc": loc_text,
                 "url": url or None,
                 "thumb": thumb,
+                "photos": photos,
                 "seller": None,
                 "ptype": ptype,
                 "op": "venta",
@@ -599,6 +622,68 @@ def parse_item(item, uf_value):
         return None
 
 
+# ------------------------------------------------------- hashes de fotos
+
+
+PHASH_MAX_DIST = 6   # distancia de Hamming máxima para considerar igual
+PHASH_MAX_KEEP = 16  # tope de hashes acumulados por propiedad
+
+
+def hash_new_photos(items, hashed):
+    """Descarga y hashea (pHash) las fotos de los avisos sin entrada en el
+    cache {lid: [hash]}. Solo procesa lo scrapeado en esta corrida (scope
+    vigente); un lid ya hasheado nunca se vuelve a descargar."""
+    todo, seen_here = [], set()
+    for it in items:
+        lid = str(it.get("lid"))
+        if lid not in hashed and lid not in seen_here:
+            seen_here.add(lid)
+            todo.append(it)
+    if not todo:
+        return
+    session = requests.Session()
+    session.headers.update({"User-Agent": BROWSER_UA})
+    n_imgs = n_fail = 0
+    for it in todo:
+        hashes = []
+        for u in (it.get("photos") or [])[:4]:
+            try:
+                r = session.get(u, timeout=10)
+                if r.ok:
+                    hashes.append(str(imagehash.phash(Image.open(BytesIO(r.content)))))
+                    n_imgs += 1
+                else:
+                    n_fail += 1
+            except Exception:
+                n_fail += 1
+            time.sleep(0.2)
+        hashed[str(it["lid"])] = hashes
+    print(f"Fotos: {len(todo)} avisos nuevos, {n_imgs} imágenes hasheadas"
+          + (f", {n_fail} fallidas" if n_fail else ""))
+
+
+def _phash_dist(a, b):
+    return bin(int(a, 16) ^ int(b, 16)).count("1")
+
+
+def photos_match(h1, h2):
+    """True/False si hay señal de fotos en ambos lados, None si falta en
+    alguno. Coinciden con ≥2 pares a distancia ≤6 (1 par basta si alguno
+    tiene una sola foto)."""
+    if not h1 or not h2:
+        return None
+    close = sum(1 for a in h1 for b in h2 if _phash_dist(a, b) <= PHASH_MAX_DIST)
+    need = 1 if min(len(h1), len(h2)) == 1 else 2
+    return close >= need
+
+
+def merge_phashes(p, new_hashes):
+    if not new_hashes:
+        return
+    cur = p.get("phashes") or []
+    p["phashes"] = (cur + [h for h in new_hashes if h not in cur])[:PHASH_MAX_KEEP]
+
+
 # ---------------------------------------------------------------- dedup
 
 
@@ -627,7 +712,13 @@ def migrate_db(props):
         print(f"Base migrada a listings por aviso: {migrated} propiedades")
 
 
-def find_match(cand, props):
+def find_match(cand, props, counters=None):
+    """Busca la propiedad a la que pertenece el aviso. Tras el gate de
+    comuna+tipo+operación+m²±5%+dormitorios, la señal principal es la
+    coincidencia de fotos por pHash; si ambos lados tienen fotos y NO
+    coinciden, no se fusiona por ninguna señal débil (vendedor/texto):
+    las corredoras tienen muchas casas parecidas."""
+    cn = counters if counters is not None else {}
     cand_tok = tokenize(cand["title"])
     for pid, p in props.items():
         if cand["lid"] in p["listings"]:
@@ -642,23 +733,87 @@ def find_match(cand, props):
             continue
         if (p.get("dorms") or 0) != (cand.get("dorms") or 0):
             continue
-        same_photo = p.get("thumb") and p["thumb"] == cand.get("thumb")
-        same_seller = p.get("seller") and p["seller"] == cand.get("seller")
+        pm = photos_match(cand.get("phashes"), p.get("phashes"))
+        if pm:
+            cn["foto"] = cn.get("foto", 0) + 1
+            return pid
+        if p.get("thumb") and p["thumb"] == cand.get("thumb"):
+            cn["url_foto"] = cn.get("url_foto", 0) + 1
+            return pid
+        if pm is False:
+            # ambos con fotos y distintas: son casas diferentes
+            continue
         sim = jaccard(cand_tok, tokenize(p["title"]))
         pdiff = abs(p["priceUF"] - cand["priceUF"]) / max(p["priceUF"], 1)
-        # Señales fuertes: misma foto de portada o mismo vendedor (ya se exigió
-        # misma comuna, m² ±5% y dormitorios). La similitud de texto exige
-        # umbral alto Y precio cercano: es preferible perder alguna
-        # republicación cruzada entre corredoras a fusionar propiedades
-        # distintas y contaminar el historial de precios.
-        if same_photo or same_seller or (sim >= 0.85 and pdiff <= 0.10):
+        if (
+            p.get("seller")
+            and p["seller"] == cand.get("seller")
+            and sim >= 0.7
+            and pdiff <= 0.10
+        ):
+            cn["vendedor"] = cn.get("vendedor", 0) + 1
+            return pid
+        if sim >= 0.85 and pdiff <= 0.10:
+            cn["texto"] = cn.get("texto", 0) + 1
             return pid
     return None
 
 
-def ingest(items, props, uf_value, cfg):
+def split_merged(props):
+    """Reparación única: separa cada propiedad con múltiples avisos en una
+    propiedad por aviso (conservando firstSeen y el historial de precios
+    actual, que no es separable por aviso). La próxima ingesta re-fusiona
+    con las reglas nuevas, ya con fotos."""
+    split = 0
+    for pid in list(props):
+        p = props[pid]
+        lids = list(p["listings"])
+        if len(lids) <= 1:
+            continue
+        del props[pid]
+        split += 1
+        for lid in lids:
+            npid = "p" + str(lid)
+            if npid in props:
+                continue
+            q = json.loads(json.dumps(p))  # copia profunda
+            q["lid"] = lid
+            q["listings"] = {lid: p["listings"][lid]}
+            q["url"] = p["listings"][lid] or p.get("url")
+            q["repubs"] = 0
+            q["phashes"] = []  # se rellena desde el cache por lid
+            props[npid] = q
+    if split:
+        print(f"Reparación: {split} propiedades con avisos múltiples "
+              "separadas en una por aviso")
+    return split
+
+
+def _absorb(p, q):
+    """Funde q dentro de p (p. ej. el resto de una separación cuyo aviso
+    re-fusionó con otra propiedad): conserva el firstSeen más antiguo,
+    y une listings y hashes."""
+    for lid, u in q["listings"].items():
+        if u or lid not in p["listings"]:
+            p["listings"][lid] = u or p["listings"].get(lid)
+    if q.get("firstSeen", "9999") < p.get("firstSeen", "9999"):
+        p["firstSeen"] = q["firstSeen"]
+    merge_phashes(p, q.get("phashes") or [])
+
+
+def refill_phashes(props, hashed):
+    """Vuelca el cache {lid: [hash]} a las propiedades que no tienen hashes."""
+    for p in props.values():
+        if not p.get("phashes"):
+            for lid in p["listings"]:
+                merge_phashes(p, hashed.get(str(lid), []))
+
+
+def ingest(items, props, uf_value, cfg, hashed=None):
     today = date.today().isoformat()
     added = merged = changes = 0
+    hashed = hashed or {}
+    counters = {}
     # marca de scope: el reporte solo muestra propiedades vistas por la
     # configuración vigente; lo demás queda en la base como historial
     scope = cfg.get("zona_label") or ""
@@ -669,13 +824,21 @@ def ingest(items, props, uf_value, cfg):
             continue
         if comunas_filter and c["comuna"].lower() not in comunas_filter:
             continue
-        pid = find_match(c, props)
+        c["phashes"] = hashed.get(c["lid"], [])
+        pid = find_match(c, props, counters)
         if pid:
             p = props[pid]
             if c["lid"] not in p["listings"]:
                 p["listings"][c["lid"]] = c["url"]
-                p["repubs"] = p.get("repubs", 0) + 1
                 merged += 1
+                # si otra propiedad ya tenía este aviso (resto de una
+                # separación), absorberla para no dejar duplicados
+                for opid in [
+                    k for k, q in props.items()
+                    if k != pid and c["lid"] in q["listings"]
+                ]:
+                    _absorb(p, props.pop(opid))
+                p["repubs"] = len(p["listings"]) - 1
             elif c["url"]:
                 p["listings"][c["lid"]] = c["url"]
             last = p["priceHist"][-1]
@@ -684,6 +847,7 @@ def ingest(items, props, uf_value, cfg):
                 changes += 1
             if c.get("sector") and not p.get("sector"):
                 p["sector"] = c["sector"]
+            merge_phashes(p, c["phashes"])
             p.update(priceUF=c["priceUF"], lastSeen=today, scope=scope,
                      url=c["url"] or p["url"])
         else:
@@ -704,6 +868,12 @@ def ingest(items, props, uf_value, cfg):
         for pid in sorted(props, key=lambda k: props[k]["lastSeen"])[: len(props) - max_props]:
             del props[pid]
     print(f"Ingesta: +{added} propiedades, {merged} republicaciones, {changes} cambios de precio")
+    if merged:
+        print("Fusiones por señal: "
+              f"{counters.get('foto', 0)} fotos (pHash), "
+              f"{counters.get('url_foto', 0)} url de foto, "
+              f"{counters.get('vendedor', 0)} vendedor+texto, "
+              f"{counters.get('texto', 0)} solo texto")
     return added, merged, changes
 
 
@@ -1123,14 +1293,22 @@ def main():
     cfg = load_json(CONFIG_PATH, {})
     db = load_json(DB_PATH, {"props": {}})
     props = db["props"]
+    hashed = db.get("hashed", {})  # cache pHash por listing id
     migrate_db(props)
+    split_merged(props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
-    ingest(items, props, uf, cfg)
+    hash_new_photos(items, hashed)
+    refill_phashes(props, hashed)
+    ingest(items, props, uf, cfg, hashed)
 
     render_report(props, cfg)
-    save_json(DB_PATH, {"props": props, "updated": datetime.now(timezone.utc).isoformat()})
+    save_json(DB_PATH, {
+        "props": props,
+        "hashed": hashed,
+        "updated": datetime.now(timezone.utc).isoformat(),
+    })
     print("Pipeline OK")
 
 
