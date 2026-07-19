@@ -196,7 +196,10 @@ def _texts_of(node, out, depth=0):
 
 
 RX_M2 = re.compile(r"(\d[\d.,]*)\s*m²(?:\s*totales)?", re.I)
-RX_M2_TOT = re.compile(r"(\d[\d.,]*)\s*m²\s*totales", re.I)
+RX_M2_TOT = re.compile(r"(\d[\d.,]*)\s*m²\s*(?:totales|de\s+terreno|terreno)", re.I)
+RX_M2_CONST = re.compile(r"(\d[\d.,]*)\s*m²\s*(?:útiles|utiles|construid\w*|const\b)", re.I)
+RX_SUP_TOTAL = re.compile(r"[Ss]uperficie\s+total\D{0,30}?(\d[\d.,]*)\s*m", re.I)
+RX_SUP_UTIL = re.compile(r"[Ss]uperficie\s+(?:útil|util|construida)\D{0,30}?(\d[\d.,]*)\s*m", re.I)
 RX_DORMS = re.compile(r"(\d+)\s*dormitorio", re.I)
 RX_BATHS = re.compile(r"(\d+)\s*baño", re.I)
 RX_MLC = re.compile(r"(MLC-?\d+)")
@@ -305,10 +308,18 @@ def _listing_from_json(d, ptype):
     _texts_of(d, texts)
     joined = " | ".join(texts)
 
-    m2 = parse_num(_attr_lookup(d, ("TOTAL_AREA", "COVERED_AREA")))
-    if not m2:
-        m = RX_M2_TOT.search(joined) or RX_M2.search(joined)
-        m2 = parse_num(m.group(1)) if m else None
+    m2t = parse_num(_attr_lookup(d, ("TOTAL_AREA",)))
+    m2c = parse_num(_attr_lookup(d, ("COVERED_AREA",)))
+    if not m2t:
+        m = RX_M2_TOT.search(joined)
+        m2t = parse_num(m.group(1)) if m else None
+    if not m2c:
+        m = RX_M2_CONST.search(joined)
+        m2c = parse_num(m.group(1)) if m else None
+    if not m2t and not m2c:
+        m = RX_M2.search(joined)
+        m2t = parse_num(m.group(1)) if m else None
+    m2 = m2t or m2c
     dorms = parse_num(_attr_lookup(d, ("BEDROOMS",)))
     if dorms is None:
         m = RX_DORMS.search(joined)
@@ -327,6 +338,8 @@ def _listing_from_json(d, ptype):
         "price": price,
         "currency": _norm_currency(cur),
         "m2": m2,
+        "m2c": m2c,
+        "m2t": m2t,
         "dorms": dorms,
         "baths": baths,
         "comuna": comuna,
@@ -364,8 +377,14 @@ def _listings_from_html(page, ptype):
         price = parse_num(frac.get_text(strip=True)) if frac else None
         cur = _norm_currency(sym.get_text(strip=True) if sym else None)
         text = card.get_text(" | ", strip=True)
-        m = RX_M2_TOT.search(text) or RX_M2.search(text)
-        m2 = parse_num(m.group(1)) if m else None
+        m = RX_M2_TOT.search(text)
+        m2t = parse_num(m.group(1)) if m else None
+        m = RX_M2_CONST.search(text)
+        m2c = parse_num(m.group(1)) if m else None
+        if not m2t and not m2c:
+            m = RX_M2.search(text)
+            m2t = parse_num(m.group(1)) if m else None
+        m2 = m2t or m2c
         md = RX_DORMS.search(text)
         mb = RX_BATHS.search(text)
         loc = card.select_one(
@@ -390,6 +409,8 @@ def _listings_from_html(page, ptype):
                 "price": price,
                 "currency": cur,
                 "m2": m2,
+                "m2c": m2c,
+                "m2t": m2t,
                 "dorms": float(md.group(1)) if md else None,
                 "baths": float(mb.group(1)) if mb else None,
                 "comuna": comuna,
@@ -635,6 +656,8 @@ def parse_item(item, uf_value):
             "ptype": item.get("ptype", "otro"),
             "op": op,
             "m2": m2,
+            "m2c": item.get("m2c"),
+            "m2t": item.get("m2t"),
             "dorms": item.get("dorms"),
             "baths": item.get("baths"),
             "priceUF": round(price_uf),
@@ -694,15 +717,25 @@ def _parse_pub_date(page):
     return (date.today() - timedelta(days=days)).isoformat()
 
 
+def _parse_detail_areas(page):
+    """(m2c, m2t) desde la página de detalle: 'Superficie útil/total' o
+    'm² construidos/terreno'."""
+    m = RX_SUP_UTIL.search(page) or RX_M2_CONST.search(page)
+    m2c = parse_num(m.group(1)) if m else None
+    m = RX_SUP_TOTAL.search(page) or RX_M2_TOT.search(page)
+    m2t = parse_num(m.group(1)) if m else None
+    return m2c, m2t
+
+
 def fetch_detail_photos(session, url):
     """Descarga la página de detalle de un aviso y extrae hasta 4 URLs de su
-    galería (JSON embebido primero, luego <img> del HTML) más la fecha
-    estimada de publicación ('Publicado hace X'). Devuelve (ok, urls, pub);
-    ok=False si la página no respondió 200 (no marcar como visitada, para
-    reintentar otro día)."""
+    galería (JSON embebido primero, luego <img> del HTML), la fecha estimada
+    de publicación ('Publicado hace X') y las superficies útil/total.
+    Devuelve (ok, urls, pub, (m2c, m2t)); ok=False si la página no respondió
+    200 (no marcar como visitada, para reintentar otro día)."""
     status, page = _get_search_html(session, url)
     if status != 200:
-        return False, [], None
+        return False, [], None, (None, None)
     urls = []
 
     def add(u):
@@ -725,7 +758,7 @@ def fetch_detail_photos(session, url):
             ".andes-carousel-snapped img, figure img"
         ):
             add(img.get("data-zoom") or img.get("data-src") or img.get("src"))
-    return True, urls[:4], _parse_pub_date(page)
+    return True, urls[:4], _parse_pub_date(page), _parse_detail_areas(page)
 
 
 def _hash_image_urls(session, urls, stats):
@@ -744,7 +777,7 @@ def _hash_image_urls(session, urls, stats):
     return hashes
 
 
-def hash_new_photos(items, hashed, detailed, pubdates=None):
+def hash_new_photos(items, hashed, detailed, pubdates=None, areas=None):
     """Descarga y hashea (pHash) fotos de avisos. Cache {lid: [hash]}: un lid
     hasheado nunca vuelve a descargar sus fotos; {lid: 1} en `detailed`
     marca que su página de detalle ya se visitó (una vez en la vida).
@@ -757,6 +790,7 @@ def hash_new_photos(items, hashed, detailed, pubdates=None):
     budget = DETAIL_PAGE_BUDGET
     n_detail = 0
     pubdates = pubdates if pubdates is not None else {}
+    areas = areas if areas is not None else {}
 
     # 1) avisos nuevos (sin entrada en cache)
     new_items, seen_here = [], set()
@@ -771,12 +805,14 @@ def hash_new_photos(items, hashed, detailed, pubdates=None):
         if len(photos) < 2 and it.get("url") and budget > 0:
             time.sleep(2)  # pausa entre páginas de detalle
             budget -= 1
-            ok, gallery, pub = fetch_detail_photos(session, it["url"])
+            ok, gallery, pub, ar = fetch_detail_photos(session, it["url"])
             if ok:
                 n_detail += 1
                 detailed[lid] = 1
                 if pub:
                     pubdates[lid] = pub
+                if any(ar):
+                    areas[lid] = list(ar)
                 for u in photos:
                     if u not in gallery:
                         gallery.append(u)
@@ -796,13 +832,15 @@ def hash_new_photos(items, hashed, detailed, pubdates=None):
         ]
         for lid in backlog[:budget]:
             time.sleep(2)
-            ok, gallery, pub = fetch_detail_photos(session, url_by_lid[lid])
+            ok, gallery, pub, ar = fetch_detail_photos(session, url_by_lid[lid])
             if not ok:
                 continue
             n_detail += 1
             detailed[lid] = 1
             if pub:
                 pubdates[lid] = pub
+            if any(ar):
+                areas[lid] = list(ar)
             new_hashes = _hash_image_urls(session, gallery, stats)
             cur = hashed.get(lid, [])
             hashed[lid] = cur + [h for h in new_hashes if h not in cur]
@@ -887,7 +925,16 @@ def find_match(cand, props, counters=None):
         cz = cand.get("zona") or ""
         if pz and cz and pz != cz:
             continue
-        if abs(p["m2"] - cand["m2"]) / p["m2"] > 0.05:
+        # m²: en casas manda el construido (±5%) cuando ambos lo declaran,
+        # con el terreno como señal secundaria; si no, m² principal ±5%
+        pm2c, cm2c = p.get("m2c"), cand.get("m2c")
+        if cand["ptype"] == "casa" and pm2c and cm2c:
+            if abs(pm2c - cm2c) / pm2c > 0.05:
+                continue
+            pm2t, cm2t = p.get("m2t"), cand.get("m2t")
+            if pm2t and cm2t and abs(pm2t - cm2t) / pm2t > 0.10:
+                continue
+        elif abs(p["m2"] - cand["m2"]) / p["m2"] > 0.05:
             continue
         # dormitorios: None vs None (típico en terrenos) es compatible;
         # solo descarta cuando ambos lados declaran valores distintos
@@ -985,6 +1032,27 @@ def refill_phashes(props, hashed):
             merge_phashes(p, hashed.get(str(lid), []))
 
 
+def ufm2_of(p):
+    """UF/m² de la propiedad: casas sobre m² construidos cuando existen;
+    terrenos (y fallback) sobre el m² principal."""
+    m = p.get("m2c") if p.get("ptype") == "casa" and p.get("m2c") else p.get("m2")
+    return p["priceUF"] / m if m else 0
+
+
+def refill_areas(props, areas):
+    """Completa m2c/m2t desde el cache {lid: [m2c, m2t]} de páginas de
+    detalle (datos históricos con un solo m² se completan vía backlog)."""
+    for p in props.values():
+        for lid in p["listings"]:
+            ar = areas.get(str(lid))
+            if not ar:
+                continue
+            if ar[0] and not p.get("m2c"):
+                p["m2c"] = ar[0]
+            if ar[1] and not p.get("m2t"):
+                p["m2t"] = ar[1]
+
+
 def refill_pub_dates(props, pubdates):
     """Propaga la fecha declarada de publicación ({lid: iso}) a las
     propiedades; con múltiples avisos vinculados conserva la más antigua."""
@@ -1043,6 +1111,9 @@ def ingest(items, props, uf_value, cfg, hashed=None):
                 changes += 1
             if c.get("sector") and not p.get("sector"):
                 p["sector"] = c["sector"]
+            for k in ("m2c", "m2t"):
+                if c.get(k) and not p.get(k):
+                    p[k] = c[k]
             merge_phashes(p, c["phashes"])
             # marca de scope/zona: el reporte solo muestra propiedades vistas
             # por la configuración vigente; el resto queda como historial
@@ -1235,34 +1306,45 @@ INV_PAGE = 50      # tarjetas por página del inventario (server y "Mostrar más
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
-:root{--paper:#F4F7F4;--ink:#16262B;--muted:#5C6B66;--line:#D9E1DA;--green:#1E7A52;--deep:#0C4A33;--gsoft:#E4F1E9;--amber:#A66300;--asoft:#F6EDDC;--red:#A63D2F;--rsoft:#F5E6E2}
+:root{--paper:#F4F7F4;--ink:#16262B;--muted:#5C6B66;--line:#D9E1DA;--green:#1E7A52;--deep:#0C4A33;--gsoft:#E4F1E9;--amber:#A66300;--asoft:#F6EDDC;--red:#A63D2F;--rsoft:#F5E6E2;--shadow:0 1px 3px rgba(22,38,43,.07),0 1px 2px rgba(22,38,43,.05)}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:'Public Sans',sans-serif}
-header{background:var(--deep);color:#fff;padding:20px 16px}
+header{background:var(--deep);color:#fff;padding:18px 16px 14px}
 .wrap{max-width:680px;margin:0 auto;padding:0 16px}
-h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.02em;margin:0}
-.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.75;margin-top:4px;line-height:1.6}
-h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;margin:28px 0 4px}
-h3.grp{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;color:var(--deep);margin:20px 0 2px}
-.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
-.row{display:flex;gap:12px}.row img{width:72px;height:72px;object-fit:cover;border-radius:8px;background:var(--paper);flex-shrink:0}
-.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:16px;color:var(--deep)}
-.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.3;margin-top:2px;padding-right:44px}
-.meta{font-size:12px;color:var(--muted);margin-top:3px;font-family:'IBM Plex Mono',monospace}
-.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;margin:6px 6px 0 0}
+h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:21px;letter-spacing:-.02em;margin:0}
+.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.8;margin-top:6px;line-height:1.6}
+.sub a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;margin:34px 0 6px;padding-top:6px}
+.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0;box-shadow:var(--shadow)}
+.row{display:flex;gap:14px;align-items:flex-start}
+.row img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--gsoft);flex-shrink:0}
+.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;color:var(--deep);letter-spacing:-.01em}
+.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.35;margin-top:4px;padding-right:40px}
+.meta{font-size:12px;color:var(--muted);margin-top:6px;font-family:'IBM Plex Mono',monospace;line-height:1.6}
+.badge{display:inline-block;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin:8px 6px 0 0;letter-spacing:.01em}
 .b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}
-.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:8px}
+.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:10px}
 .pchg.down{color:var(--green)}.pchg.up{color:var(--red)}
-a.btn{display:inline-block;margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;color:var(--deep);font-weight:600;font-size:13px;text-decoration:none}
-button.btn{margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;background:#fff;color:var(--deep);font-weight:600;font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
-.fav-btn{position:absolute;top:8px;right:8px;width:44px;height:44px;border:none;background:none;font-size:24px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
-.note{background:var(--asoft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.4}
-.chip-group{display:flex;flex-wrap:wrap;margin:6px 0}
-.chip{min-height:40px;min-width:40px;padding:8px 14px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
+a.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;margin:10px 8px 0 0;padding:0 14px;min-height:40px;min-width:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--deep);font-weight:600;font-size:12.5px;text-decoration:none;cursor:pointer;font-family:'Public Sans',sans-serif}
+a.btn:active,button.btn:active{background:var(--gsoft)}
+.fav-btn{position:absolute;top:6px;right:6px;width:44px;height:44px;border:none;background:none;font-size:23px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
+.note{background:var(--asoft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.5}
+.empty{font-size:13px;color:var(--muted);margin:8px 0 4px;line-height:1.5}
+footer{font-size:11px;color:var(--muted);text-align:center;padding:28px 16px;line-height:1.6}
+#filter-wrap{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1px solid var(--line);padding:6px 0 8px;box-shadow:0 2px 6px rgba(22,38,43,.05)}
+.chip-group{display:flex;flex-wrap:wrap;align-items:center;margin:4px 0 0}
+.chip{min-height:40px;min-width:40px;padding:6px 13px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:12.5px;cursor:pointer;font-family:'Public Sans',sans-serif}
 .chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
+#clear-filters{border-color:var(--red);color:var(--red)}
+#inv-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin:6px 2px 0}
+#sec-chips.collapsed{display:none}
 #inv-list:not(.show-zona) .zt-z{display:none}
 #inv-list:not(.show-tipo) .zt-t{display:none}
-.empty{font-size:13px;color:var(--muted);margin:8px 0 4px}
-footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;line-height:1.5}
+table.stats{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+table.stats th,table.stats td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:right;font-family:'IBM Plex Mono',monospace}
+table.stats th{font-family:'Archivo',sans-serif;font-size:12px;color:var(--muted)}
+table.stats td:first-child,table.stats th:first-child{text-align:left;font-family:'Public Sans',sans-serif}
+.method p{font-size:14px;line-height:1.65;margin:10px 0}
+.method h2{font-family:'Archivo',sans-serif;font-size:17px;margin:28px 0 4px}
 """
 
 
@@ -1276,7 +1358,9 @@ def prop_public(pid, p, active):
         "sec": p.get("comuna") or "",
         "uf": p["priceUF"],
         "m2": round(p["m2"]),
-        "ufm2": round(p["priceUF"] / p["m2"], 1),
+        "m2c": round(p["m2c"]) if p.get("m2c") else None,
+        "m2t": round(p["m2t"]) if p.get("m2t") else None,
+        "ufm2": round(ufm2_of(p), 1),
         "d": p.get("dorms"),
         "b": p.get("baths"),
         "links": [u for u in p["listings"].values() if u],
@@ -1307,7 +1391,7 @@ def card_html(pid, p, extra_html="", extra_badges=""):
     badges = extra_badges
     if p.get("repubs"):
         badges += f'<span class="badge b-a">republicada ×{p["repubs"]}</span>'
-    img = (f'<img src="{esc(p["thumb"])}" alt="" width="72" height="72" '
+    img = (f'<img src="{esc(p["thumb"])}" alt="" width="96" height="96" '
            'loading="lazy">') if p.get("thumb") else ""
     sector = p.get("sector") or p.get("comuna") or "—"
     db_txt = ""
@@ -1321,10 +1405,20 @@ def card_html(pid, p, extra_html="", extra_badges=""):
     if p.get("pub_estimada"):
         pub_txt = (' · publicado hace '
                    f'{humanize_days(days_since(p["pub_estimada"]))}')
+    # superficies: casas separan construido/terreno (UF/m² sobre construidos);
+    # terrenos solo terreno; histórico con un solo m² muestra lo que hay
+    if p.get("ptype") == "terreno":
+        area_txt = f'{(p.get("m2t") or p["m2"]):.0f} m² terreno'
+    elif p.get("m2c") and p.get("m2t"):
+        area_txt = f'{p["m2c"]:.0f} m² const · {p["m2t"]:.0f} m² terreno'
+    elif p.get("m2c"):
+        area_txt = f'{p["m2c"]:.0f} m² const'
+    else:
+        area_txt = f'{p["m2"]:.0f} m²'
     meta = (
         f'<span class="zt zt-z">{esc(zona)} · </span>'
         f'<span class="zt zt-t">{esc(p.get("ptype", ""))} · </span>'
-        f'{esc(sector)} · {p["m2"]:.0f} m² · {p["priceUF"] / p["m2"]:.1f} UF/m²'
+        f'{esc(sector)} · {area_txt} · {ufm2_of(p):.1f} UF/m²'
         f'{db_txt} · {days} día{"s" if days != 1 else ""} en radar{pub_txt}'
     )
     return f"""
@@ -1369,17 +1463,22 @@ function cardHTML(pid,p,extra){
  if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
- var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="72" height="72" loading="lazy">':'';
+ var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="96" height="96" loading="lazy">':'';
  var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
  var zt=(p.z?'<span class="zt zt-z">'+esc(p.z)+' · </span>':'')
        +(p.pt?'<span class="zt zt-t">'+esc(p.pt)+' · </span>':'');
  var pub='';
  if(p.pub)pub=' · publicado hace '+humanDays(daysFrom(p.pub));
+ var area;
+ if(p.pt==='terreno')area=(p.m2t||p.m2)+' m² terreno';
+ else if(p.m2c&&p.m2t)area=p.m2c+' m² const · '+p.m2t+' m² terreno';
+ else if(p.m2c)area=p.m2c+' m² const';
+ else area=p.m2+' m²';
  return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">☆</button>'+
   '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
   '<span class="price">'+price+'</span>'+
   '<div class="title">'+esc(p.t)+'</div>'+
-  '<div class="meta">'+zt+esc(p.s||'')+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+daysFrom(p.fs)+' días en radar'+pub+'</div>'+
+  '<div class="meta">'+zt+esc(p.s||'')+' · '+area+' · '+p.ufm2+' UF/m²'+db+' · '+daysFrom(p.fs)+' días en radar'+pub+'</div>'+
   '</div></div>'+(extra||'')+'<div>'+badges+'</div><div class="links">'+links+'</div></div>';
 }
 var FKEY='radar_filters';
@@ -1427,12 +1526,17 @@ function applyFilters(){
   });
   shown=PAGE;
   renderInv();
-  document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
+  document.querySelectorAll('#filter-bar .chip[data-v]').forEach(function(ch){
    ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
   });
   var il=document.getElementById('inv-list');
   il.classList.toggle('show-zona',f.z==='all');
   il.classList.toggle('show-tipo',f.t==='all');
+  var any=f.z!=='all'||f.t!=='all'||f.s!=='all';
+  document.getElementById('clear-filters').style.display=any?'':'none';
+  var st=document.getElementById('sec-toggle');
+  st.textContent=f.s==='all'?'Sectores ▾':'Sector: '+(f.s==='__otros__'?'Otros':f.s)+' ▾';
+  if(f.s!=='all')document.getElementById('sec-chips').classList.remove('collapsed');
  }catch(e){
   // ante cualquier error queda lo servido por el servidor: todo visible
   console.error('radar filtros:',e);
@@ -1530,8 +1634,21 @@ document.addEventListener('click',function(e){
  if(b){safe('favorita',function(){toggleFav(b.dataset.pid)});return}
  var x=e.target.closest('#fav-export');
  if(x){safe('exportar',function(){exportFavs(x)});return}
+ if(e.target.closest('#clear-filters')){
+  safe('limpiar',function(){
+   localStorage.setItem(FKEY,JSON.stringify({z:'all',t:'all',s:'all'}));
+   applyFilters();
+  });
+  return;
+ }
+ if(e.target.closest('#sec-toggle')){
+  safe('sectores',function(){
+   document.getElementById('sec-chips').classList.toggle('collapsed');
+  });
+  return;
+ }
  var chp=e.target.closest('#filter-bar .chip');
- if(chp){
+ if(chp&&chp.dataset.v){
   safe('filtros',function(){
    var f=getFilters();
    f[chp.parentElement.dataset.group]=chp.dataset.v;
@@ -1574,20 +1691,6 @@ def render_report(props, cfg):
         and days_since(p["lastSeen"]) <= INACTIVE_DAYS
     }
 
-    # --- encabezado: estadísticas por zona+tipo, nunca mezcladas
-    groups = {}
-    for p in active.values():
-        key = (p.get("zona") or p.get("scope") or "?", p["ptype"])
-        groups.setdefault(key, []).append(p)
-    stat_lines = []
-    for (z, t), ps in sorted(groups.items()):
-        med_ufm2 = statistics.median(q["priceUF"] / q["m2"] for q in ps)
-        med_uf = statistics.median(q["priceUF"] for q in ps)
-        stat_lines.append(
-            f"{esc(z)} · {PT_LABEL.get(t, t)}: {len(ps)} · "
-            f"mediana {med_ufm2:.1f} UF/m² · precio mediano UF {med_uf:,.0f}"
-        )
-    stats_html = "<br>".join(stat_lines)
     now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
 
     # --- chips de filtro: sectores (campo comuna limpio) con ≥5 propiedades
@@ -1617,13 +1720,15 @@ def render_report(props, cfg):
   <button class="chip" data-v="all">Todos</button>
   <button class="chip" data-v="casa">Casas</button>
   <button class="chip" data-v="terreno">Terrenos</button>
+  <button class="chip" id="sec-toggle">Sectores ▾</button>
+  <button class="chip" id="clear-filters" style="display:none">Limpiar ✕</button>
  </div>
- <div class="chip-group" data-group="s">
+ <div class="chip-group collapsed" data-group="s" id="sec-chips">
   <button class="chip" data-v="all">Todos los sectores</button>{chips_sector}
   <button class="chip" data-v="__otros__">Otros</button>
  </div>
 </div>
-<div class="empty" id="inv-count"></div>"""
+<div id="inv-count"></div>"""
 
     # --- novedades: las renderiza JS según la última visita del usuario
     #     (localStorage); aquí solo se calculan los conteos del día para el log
@@ -1665,8 +1770,11 @@ def render_report(props, cfg):
 <style>{CSS}</style></head><body>
 <header><div class="wrap">
  <h1>RADAR INMOBILIARIO</h1>
- <div class="sub">{today} · {len(active):,} propiedades activas · actualizado {now}<br>{stats_html}</div>
+ <div class="sub">{today} · {len(active):,} propiedades activas · <a href="metodologia.html">Metodología y estadísticas →</a></div>
 </div></header>
+<div id="filter-wrap"><div class="wrap">
+{filter_bar}
+</div></div>
 <div class="wrap">
 <h2 class="sec">Mis seleccionadas</h2>
 <div id="favs-list"></div>
@@ -1678,7 +1786,6 @@ def render_report(props, cfg):
 <div id="chg-list"><div class="empty">Cargando…</div></div>
 <button id="mark-seen" class="btn">Marcar todo como visto</button>
 <h2 class="sec">Inventario completo ({len(active)})</h2>
-{filter_bar}
 <div id="inv-list">
 {inv_html}
 </div>
@@ -1695,6 +1802,94 @@ def render_report(props, cfg):
           f"{inactive_n} inactivas conservadas)")
 
 
+METHOD_PATH = ROOT / "docs" / "metodologia.html"
+
+
+def render_methodology(props, cfg):
+    """docs/metodologia.html: estadísticas por zona×tipo + cómo se
+    construye el radar, con sus limitaciones."""
+    esc = html.escape
+    today = date.today().isoformat()
+    scopes = set((cfg.get("zonas") or {}).values()) or {""}
+    active = [
+        p for p in props.values()
+        if p.get("ptype") in ("casa", "terreno")
+        and p.get("scope", "") in scopes
+        and days_since(p["lastSeen"]) <= INACTIVE_DAYS
+    ]
+    groups = {}
+    for p in active:
+        groups.setdefault((p.get("zona") or p.get("scope") or "?", p["ptype"]), []).append(p)
+    rows = []
+    for (z, t), ps in sorted(groups.items()):
+        ufm2s = sorted(ufm2_of(q) for q in ps if ufm2_of(q) > 0)
+        if not ufm2s:
+            continue
+        q4 = statistics.quantiles(ufm2s, n=4) if len(ufm2s) >= 2 else [ufm2s[0]] * 3
+        rows.append(
+            f"<tr><td>{esc(z)} · {PT_LABEL.get(t, t)}</td>"
+            f"<td>{len(ps)}</td>"
+            f"<td>{statistics.median(ufm2s):.1f}</td>"
+            f"<td>{q4[0]:.1f}–{q4[2]:.1f}</td>"
+            f"<td>{statistics.median(q['m2'] for q in ps):,.0f}</td>"
+            f"<td>{statistics.median(q['priceUF'] for q in ps):,.0f}</td></tr>"
+        )
+    table = (
+        '<table class="stats"><tr><th>Grupo</th><th>n</th><th>UF/m² med</th>'
+        "<th>p25–p75</th><th>m² med</th><th>UF med</th></tr>"
+        + "".join(rows) + "</table>"
+    )
+    METHOD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    METHOD_PATH.write_text(f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Metodología — Radar Inmobiliario</title>
+<style>{CSS}</style></head><body>
+<header><div class="wrap">
+ <h1>METODOLOGÍA Y ESTADÍSTICAS</h1>
+ <div class="sub">{today} · <a href="index.html">← Volver al radar</a></div>
+</div></header>
+<div class="wrap method">
+<h2>Estadísticas por zona y tipo</h2>
+<p>Medianas calculadas por separado para cada grupo (nunca mezcladas).
+En casas el UF/m² se calcula sobre m² construidos cuando el aviso los
+declara; en terrenos, sobre m² de terreno.</p>
+{table}
+<h2>Fuente</h2>
+<p>Avisos públicos de venta en Portal Inmobiliario para las zonas
+configuradas (Lo Barnechea y Zapallar; casas y terrenos), recorridos en
+una corrida diaria alrededor de las 3–4 AM de Chile. Los precios son
+<b>de lista</b> — lo que pide el vendedor —, no precios de cierre.</p>
+<h2>Deduplicación</h2>
+<p>Una misma propiedad suele publicarse varias veces (distintas
+corredoras, republicaciones). El radar agrupa avisos comparando las
+<b>fotos con hash perceptual</b> (la señal más confiable: las fotos se
+reutilizan entre avisos aunque cambie el texto), más atributos: comuna,
+tipo, superficie (±5%, en casas priorizando m² construidos) y
+dormitorios. El texto y el vendedor solo fusionan con umbrales estrictos,
+y si las fotos de dos avisos no coinciden, nunca se fusionan por texto:
+preferimos duplicar antes que mezclar casas distintas.</p>
+<h2>«Días en radar» vs «publicado hace»</h2>
+<p><b>Días en radar</b> es nuestra medición: desde que la propiedad
+(deduplicada) apareció por primera vez en una corrida. <b>Publicado
+hace</b> es lo que declara el aviso, y se resetea cuando el vendedor
+republica. Si el aviso dice «hace 3 días» pero lleva meses en el radar,
+es señal de republicación encubierta.</p>
+<h2>Limitaciones</h2>
+<p>No hay historial anterior al inicio del radar (julio 2026), así que
+los «días en radar» de las propiedades más antiguas subestiman su tiempo
+real en el mercado. Los atributos los digita cada corredora y pueden
+venir incorrectos (m², dormitorios, sector). Las superficies separadas
+(construida/terreno) se completan gradualmente visitando páginas de
+detalle. La deduplicación es probabilística: puede unir de menos
+(duplicados visibles) y rara vez de más.</p>
+</div>
+<footer>Radar Inmobiliario · datos de avisos públicos · verifica siempre en terreno y títulos antes de decidir.</footer>
+</body></html>""", encoding="utf-8")
+    print(f"Metodología generada: {METHOD_PATH} ({len(rows)} grupos)")
+
+
 # ---------------------------------------------------------------- main
 
 
@@ -1705,22 +1900,26 @@ def main():
     hashed = db.get("hashed", {})      # cache pHash por listing id
     detailed = db.get("detailed", {})  # lids con página de detalle visitada
     pubdates = db.get("pubdates", {})  # fecha declarada de publicación por lid
+    areas = db.get("areas", {})        # [m2c, m2t] por lid (páginas de detalle)
     migrate_db(props)
     apply_repairs(db, props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
-    hash_new_photos(items, hashed, detailed, pubdates)
+    hash_new_photos(items, hashed, detailed, pubdates, areas)
     refill_phashes(props, hashed)
     ingest(items, props, uf, cfg, hashed)
     refill_pub_dates(props, pubdates)
+    refill_areas(props, areas)
 
     render_report(props, cfg)
+    render_methodology(props, cfg)
     save_json(DB_PATH, {
         "props": props,
         "hashed": hashed,
         "detailed": detailed,
         "pubdates": pubdates,
+        "areas": areas,
         "schema_version": db.get("schema_version", SCHEMA_VERSION),
         "updated": datetime.now(timezone.utc).isoformat(),
     })

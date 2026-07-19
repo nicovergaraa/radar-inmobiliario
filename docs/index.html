@@ -2,43 +2,74 @@
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="radar-build" content="19-07-2026 11:31 UTC">
+<meta name="radar-build" content="19-07-2026 12:46 UTC">
 <title>Radar Inmobiliario — 2026-07-19</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
-:root{--paper:#F4F7F4;--ink:#16262B;--muted:#5C6B66;--line:#D9E1DA;--green:#1E7A52;--deep:#0C4A33;--gsoft:#E4F1E9;--amber:#A66300;--asoft:#F6EDDC;--red:#A63D2F;--rsoft:#F5E6E2}
+:root{--paper:#F4F7F4;--ink:#16262B;--muted:#5C6B66;--line:#D9E1DA;--green:#1E7A52;--deep:#0C4A33;--gsoft:#E4F1E9;--amber:#A66300;--asoft:#F6EDDC;--red:#A63D2F;--rsoft:#F5E6E2;--shadow:0 1px 3px rgba(22,38,43,.07),0 1px 2px rgba(22,38,43,.05)}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:'Public Sans',sans-serif}
-header{background:var(--deep);color:#fff;padding:20px 16px}
+header{background:var(--deep);color:#fff;padding:18px 16px 14px}
 .wrap{max-width:680px;margin:0 auto;padding:0 16px}
-h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:22px;letter-spacing:-.02em;margin:0}
-.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.75;margin-top:4px;line-height:1.6}
-h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:17px;margin:28px 0 4px}
-h3.grp{font-family:'Archivo',sans-serif;font-weight:700;font-size:14px;color:var(--deep);margin:20px 0 2px}
-.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;margin:12px 0}
-.row{display:flex;gap:12px}.row img{width:72px;height:72px;object-fit:cover;border-radius:8px;background:var(--paper);flex-shrink:0}
-.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:16px;color:var(--deep)}
-.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.3;margin-top:2px;padding-right:44px}
-.meta{font-size:12px;color:var(--muted);margin-top:3px;font-family:'IBM Plex Mono',monospace}
-.badge{display:inline-block;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;margin:6px 6px 0 0}
+h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:21px;letter-spacing:-.02em;margin:0}
+.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.8;margin-top:6px;line-height:1.6}
+.sub a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;margin:34px 0 6px;padding-top:6px}
+.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0;box-shadow:var(--shadow)}
+.row{display:flex;gap:14px;align-items:flex-start}
+.row img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--gsoft);flex-shrink:0}
+.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;color:var(--deep);letter-spacing:-.01em}
+.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.35;margin-top:4px;padding-right:40px}
+.meta{font-size:12px;color:var(--muted);margin-top:6px;font-family:'IBM Plex Mono',monospace;line-height:1.6}
+.badge{display:inline-block;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin:8px 6px 0 0;letter-spacing:.01em}
 .b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}
-.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:8px}
+.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:10px}
 .pchg.down{color:var(--green)}.pchg.up{color:var(--red)}
-a.btn{display:inline-block;margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;color:var(--deep);font-weight:600;font-size:13px;text-decoration:none}
-button.btn{margin:10px 8px 0 0;padding:10px 14px;min-height:40px;min-width:40px;border:1px solid var(--deep);border-radius:8px;background:#fff;color:var(--deep);font-weight:600;font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
-.fav-btn{position:absolute;top:8px;right:8px;width:44px;height:44px;border:none;background:none;font-size:24px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
-.note{background:var(--asoft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.4}
-.chip-group{display:flex;flex-wrap:wrap;margin:6px 0}
-.chip{min-height:40px;min-width:40px;padding:8px 14px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:13px;cursor:pointer;font-family:'Public Sans',sans-serif}
+a.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;margin:10px 8px 0 0;padding:0 14px;min-height:40px;min-width:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--deep);font-weight:600;font-size:12.5px;text-decoration:none;cursor:pointer;font-family:'Public Sans',sans-serif}
+a.btn:active,button.btn:active{background:var(--gsoft)}
+.fav-btn{position:absolute;top:6px;right:6px;width:44px;height:44px;border:none;background:none;font-size:23px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
+.note{background:var(--asoft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.5}
+.empty{font-size:13px;color:var(--muted);margin:8px 0 4px;line-height:1.5}
+footer{font-size:11px;color:var(--muted);text-align:center;padding:28px 16px;line-height:1.6}
+#filter-wrap{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1px solid var(--line);padding:6px 0 8px;box-shadow:0 2px 6px rgba(22,38,43,.05)}
+.chip-group{display:flex;flex-wrap:wrap;align-items:center;margin:4px 0 0}
+.chip{min-height:40px;min-width:40px;padding:6px 13px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:12.5px;cursor:pointer;font-family:'Public Sans',sans-serif}
 .chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
+#clear-filters{border-color:var(--red);color:var(--red)}
+#inv-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin:6px 2px 0}
+#sec-chips.collapsed{display:none}
 #inv-list:not(.show-zona) .zt-z{display:none}
 #inv-list:not(.show-tipo) .zt-t{display:none}
-.empty{font-size:13px;color:var(--muted);margin:8px 0 4px}
-footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;line-height:1.5}
+table.stats{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+table.stats th,table.stats td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:right;font-family:'IBM Plex Mono',monospace}
+table.stats th{font-family:'Archivo',sans-serif;font-size:12px;color:var(--muted)}
+table.stats td:first-child,table.stats th:first-child{text-align:left;font-family:'Public Sans',sans-serif}
+.method p{font-size:14px;line-height:1.65;margin:10px 0}
+.method h2{font-family:'Archivo',sans-serif;font-size:17px;margin:28px 0 4px}
 </style></head><body>
 <header><div class="wrap">
  <h1>RADAR INMOBILIARIO</h1>
- <div class="sub">2026-07-19 · 3,663 propiedades activas · actualizado 19-07-2026 11:31 UTC<br>Lo Barnechea · casas: 2042 · mediana 90.1 UF/m² · precio mediano UF 28,000<br>Lo Barnechea · terrenos: 782 · mediana 97.9 UF/m² · precio mediano UF 14,800<br>Zapallar · casas: 751 · mediana 108.3 UF/m² · precio mediano UF 26,500<br>Zapallar · terrenos: 88 · mediana 18.1 UF/m² · precio mediano UF 23,550</div>
+ <div class="sub">2026-07-19 · 3,663 propiedades activas · <a href="metodologia.html">Metodología y estadísticas →</a></div>
 </div></header>
+<div id="filter-wrap"><div class="wrap">
+
+<div id="filter-bar">
+ <div class="chip-group" data-group="z">
+  <button class="chip" data-v="all">Todas</button><button class="chip" data-v="Lo Barnechea">Lo Barnechea</button><button class="chip" data-v="Zapallar">Zapallar</button>
+ </div>
+ <div class="chip-group" data-group="t">
+  <button class="chip" data-v="all">Todos</button>
+  <button class="chip" data-v="casa">Casas</button>
+  <button class="chip" data-v="terreno">Terrenos</button>
+  <button class="chip" id="sec-toggle">Sectores ▾</button>
+  <button class="chip" id="clear-filters" style="display:none">Limpiar ✕</button>
+ </div>
+ <div class="chip-group collapsed" data-group="s" id="sec-chips">
+  <button class="chip" data-v="all">Todos los sectores</button><button class="chip" data-v="La Dehesa">La Dehesa (1146)</button><button class="chip" data-v="Los Trapenses">Los Trapenses (764)</button><button class="chip" data-v="El Huinganal">El Huinganal (260)</button><button class="chip" data-v="Centro De Cachagua">Centro De Cachagua (252)</button><button class="chip" data-v="El Arrayán">El Arrayán (201)</button><button class="chip" data-v="Lo Barnechea">Lo Barnechea (144)</button><button class="chip" data-v="Zapallar">Zapallar (119)</button><button class="chip" data-v="Centro De Zapallar">Centro De Zapallar (117)</button><button class="chip" data-v="Valle Escondido">Valle Escondido (90)</button><button class="chip" data-v="Cantagua De Cachagua">Cantagua De Cachagua (73)</button><button class="chip" data-v="Laguna De Zapallar">Laguna De Zapallar (70)</button><button class="chip" data-v="Catapilco">Catapilco (42)</button><button class="chip" data-v="Plaza San Enrique">Plaza San Enrique (39)</button><button class="chip" data-v="Costa De Cachagua">Costa De Cachagua (34)</button><button class="chip" data-v="Camino A Farellones">Camino A Farellones (32)</button><button class="chip" data-v="Puente Nuevo">Puente Nuevo (32)</button><button class="chip" data-v="Norte De Zapallar">Norte De Zapallar (31)</button><button class="chip" data-v="Centros Invernales">Centros Invernales (29)</button><button class="chip" data-v="Las Cujas - El Pangue">Las Cujas - El Pangue (23)</button><button class="chip" data-v="Antigua Lo Barnechea">Antigua Lo Barnechea (21)</button><button class="chip" data-v="Chile">Chile (12)</button><button class="chip" data-v="Condominio Altavista">Condominio Altavista (7)</button><button class="chip" data-v="CASA EN CONDOMINIO ALTA VISTA">CASA EN CONDOMINIO ALTA VISTA (6)</button><button class="chip" data-v="CACHAGUA ZAPALLAR">CACHAGUA ZAPALLAR (5)</button>
+  <button class="chip" data-v="__otros__">Otros</button>
+ </div>
+</div>
+<div id="inv-count"></div>
+</div></div>
 <div class="wrap">
 <h2 class="sec">Mis seleccionadas</h2>
 <div id="favs-list"></div>
@@ -50,27 +81,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 <div id="chg-list"><div class="empty">Cargando…</div></div>
 <button id="mark-seen" class="btn">Marcar todo como visto</button>
 <h2 class="sec">Inventario completo (3663)</h2>
-
-<div id="filter-bar">
- <div class="chip-group" data-group="z">
-  <button class="chip" data-v="all">Todas</button><button class="chip" data-v="Lo Barnechea">Lo Barnechea</button><button class="chip" data-v="Zapallar">Zapallar</button>
- </div>
- <div class="chip-group" data-group="t">
-  <button class="chip" data-v="all">Todos</button>
-  <button class="chip" data-v="casa">Casas</button>
-  <button class="chip" data-v="terreno">Terrenos</button>
- </div>
- <div class="chip-group" data-group="s">
-  <button class="chip" data-v="all">Todos los sectores</button><button class="chip" data-v="La Dehesa">La Dehesa (1146)</button><button class="chip" data-v="Los Trapenses">Los Trapenses (764)</button><button class="chip" data-v="El Huinganal">El Huinganal (260)</button><button class="chip" data-v="Centro De Cachagua">Centro De Cachagua (252)</button><button class="chip" data-v="El Arrayán">El Arrayán (201)</button><button class="chip" data-v="Lo Barnechea">Lo Barnechea (144)</button><button class="chip" data-v="Zapallar">Zapallar (119)</button><button class="chip" data-v="Centro De Zapallar">Centro De Zapallar (117)</button><button class="chip" data-v="Valle Escondido">Valle Escondido (90)</button><button class="chip" data-v="Cantagua De Cachagua">Cantagua De Cachagua (73)</button><button class="chip" data-v="Laguna De Zapallar">Laguna De Zapallar (70)</button><button class="chip" data-v="Catapilco">Catapilco (42)</button><button class="chip" data-v="Plaza San Enrique">Plaza San Enrique (39)</button><button class="chip" data-v="Costa De Cachagua">Costa De Cachagua (34)</button><button class="chip" data-v="Camino A Farellones">Camino A Farellones (32)</button><button class="chip" data-v="Puente Nuevo">Puente Nuevo (32)</button><button class="chip" data-v="Norte De Zapallar">Norte De Zapallar (31)</button><button class="chip" data-v="Centros Invernales">Centros Invernales (29)</button><button class="chip" data-v="Las Cujas - El Pangue">Las Cujas - El Pangue (23)</button><button class="chip" data-v="Antigua Lo Barnechea">Antigua Lo Barnechea (21)</button><button class="chip" data-v="Chile">Chile (12)</button><button class="chip" data-v="Condominio Altavista">Condominio Altavista (7)</button><button class="chip" data-v="CASA EN CONDOMINIO ALTA VISTA">CASA EN CONDOMINIO ALTA VISTA (6)</button><button class="chip" data-v="CACHAGUA ZAPALLAR">CACHAGUA ZAPALLAR (5)</button>
-  <button class="chip" data-v="__otros__">Otros</button>
- </div>
-</div>
-<div class="empty" id="inv-count"></div>
 <div id="inv-list">
 
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Zapallar">
  <button class="fav-btn" data-pid="pMLC4116739172" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_928503-MLC86748488691_062025-E-exclusiva-casa-frente-al-mar-punta-pite-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_928503-MLC86748488691_062025-E-exclusiva-casa-frente-al-mar-punta-pite-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 400</span>
    <div class="title">Exclusiva Casa Frente Al Mar Punta Pite Zapallar</div>
@@ -82,7 +97,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Zapallar">
  <button class="fav-btn" data-pid="pMLC3623046544" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_843403-MLC107066122204_022026-E-casa-en-venta-en-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_843403-MLC107066122204_022026-E-casa-en-venta-en-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 1,469</span>
    <div class="title">Casa En Venta En Catapilco</div>
@@ -94,7 +109,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3717459552" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_850360-MLC105411038746_012026-E-venta-casa-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_850360-MLC105411038746_012026-E-venta-casa-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 1,518</span>
    <div class="title">Venta Casa Catapilco</div>
@@ -106,7 +121,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3717614066" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_719441-MLC106044988542_022026-E-venta-casa-catapilco-sector-blanquillo.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_719441-MLC106044988542_022026-E-venta-casa-catapilco-sector-blanquillo.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 1,959</span>
    <div class="title">Venta Casa Catapilco - Sector Blanquillo</div>
@@ -118,11 +133,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="terreno" data-sector="Centro De Cachagua">
  <button class="fav-btn" data-pid="pMLC3558168734" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_765858-MLC81866778022_012025-E-locales-comerciales-en-el-corazon-de-cachagua.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_765858-MLC81866778022_012025-E-locales-comerciales-en-el-corazon-de-cachagua.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,000</span>
    <div class="title">Locales Comerciales En El Corazón De Cachagua</div>
-   <div class="meta"><span class="zt zt-z">Zapallar · </span><span class="zt zt-t">terreno · </span>Chile · 40 m² · 50.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Zapallar · </span><span class="zt zt-t">terreno · </span>Chile · 40 m² terreno · 50.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -130,7 +145,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4201732998" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_741805-MLC113464529368_072026-E-se-vende-terreno-plano-de-5000-mt-con-rol-a-pasos-de-la-carr.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_741805-MLC113464529368_072026-E-se-vende-terreno-plano-de-5000-mt-con-rol-a-pasos-de-la-carr.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,179</span>
    <div class="title">Se Vende Terreno Plano De 5000 Mt Con Rol A Pasos De La Carr</div>
@@ -142,7 +157,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4051123746" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_949797-MLC112811210513_062026-E-excelente-casa-4d2b-catapilco-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_949797-MLC112811210513_062026-E-excelente-casa-4d2b-catapilco-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,203</span>
    <div class="title">Excelente Casa 4d+2b Catapilco - Zapallar</div>
@@ -154,7 +169,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4038914422" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_956658-MLC100081191623_122025-E-casa-en-venta-en-altos-de-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_956658-MLC100081191623_122025-E-casa-en-venta-en-altos-de-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,326</span>
    <div class="title">Casa En Venta En Altos De Catapilco</div>
@@ -166,7 +181,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3816302564" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_927857-MLC93315438829_092025-E-casa-en-venta-centro-de-catapilco-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_927857-MLC93315438829_092025-E-casa-en-venta-centro-de-catapilco-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,326</span>
    <div class="title">Casa En Venta Centro De Catapilco Zapallar</div>
@@ -178,11 +193,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC4198197912" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_794305-MLC114708156305_072026-E-oportunidad-de-inversion-en-oficina-o-consulta-en-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_794305-MLC114708156305_072026-E-oportunidad-de-inversion-en-oficina-o-consulta-en-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,390</span>
    <div class="title">Oportunidad De Inversión En Oficina O Consulta En La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>440 · 26 m² · 91.9 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>440 · 26 m² terreno · 91.9 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -190,11 +205,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3245953268" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_744386-MLC95836797985_102025-E-linda-oficina-con-full-conectividad-seguridad-24-horas.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_744386-MLC95836797985_102025-E-linda-oficina-con-full-conectividad-seguridad-24-horas.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,400</span>
    <div class="title">Linda Oficina Con Full Conectividad - Seguridad 24 Horas</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 31 m² · 77.4 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 31 m² terreno · 77.4 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -202,11 +217,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="El Huinganal">
  <button class="fav-btn" data-pid="pMLC1909842119" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_755584-MLC109935471329_042026-E-excelente-oportunidad-local-comercial-en-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_755584-MLC109935471329_042026-E-excelente-oportunidad-local-comercial-en-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 2,700</span>
    <div class="title">Excelente Oportunidad Local Comercial En La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>El Huinganal · 39 m² · 69.2 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>El Huinganal · 39 m² terreno · 69.2 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -214,11 +229,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Puente Nuevo">
  <button class="fav-btn" data-pid="pMLC1762768705" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_712249-MLC106003864197_012026-E-precio-atractivo-en-excelente-ubicacion.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_712249-MLC106003864197_012026-E-precio-atractivo-en-excelente-ubicacion.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,000</span>
    <div class="title">Precio Atractivo En Excelente Ubicación</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1 - 300 · 46 m² · 65.2 UF/m² · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1 - 300 · 46 m² terreno · 65.2 UF/m² · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -226,7 +241,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC2006032483" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_964373-MLC101600232203_122025-E-encantadoras-vistas-campestres-en-catapilco-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_964373-MLC101600232203_122025-E-encantadoras-vistas-campestres-en-catapilco-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,000</span>
    <div class="title">Encantadoras Vistas Campestres En Catapilco, Zapallar</div>
@@ -238,7 +253,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco - Condominio La Mestiza">
  <button class="fav-btn" data-pid="pMLC1887524889" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_758606-MLC108046574842_032026-E-casa-en-venta-de-4-dorm-en-zapallar-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_758606-MLC108046574842_032026-E-casa-en-venta-de-4-dorm-en-zapallar-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,000</span>
    <div class="title">Casa En Venta De 4 Dorm. En Zapallar Catapilco</div>
@@ -250,7 +265,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3717537174" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_797807-MLC83361421207_032025-E-hermosa-casa-en-venta.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_797807-MLC83361421207_032025-E-hermosa-casa-en-venta.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,075</span>
    <div class="title">Hermosa Casa En Venta</div>
@@ -262,7 +277,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3816302474" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_652052-MLC93317982267_092025-E-parcela-con-casa-tipo-cabana-en-foresta-de-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_652052-MLC93317982267_092025-E-parcela-con-casa-tipo-cabana-en-foresta-de-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,183</span>
    <div class="title">Parcela Con Casa Tipo Cabaña En Foresta De Zapallar</div>
@@ -274,7 +289,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC3616927936" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_862795-MLC107594983651_022026-E-amplia-casa-en-la-mestiza-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_862795-MLC107594983651_022026-E-amplia-casa-en-la-mestiza-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,300</span>
    <div class="title">Amplia Casa En La Mestiza , Catapilco</div>
@@ -286,11 +301,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Plaza San Enrique">
  <button class="fav-btn" data-pid="pMLC4152858116" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_784500-MLC97925891320_112025-E-v-e-n-d-i-d-o-departamento-en-venta-plaza-san-enrique.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_784500-MLC97925891320_112025-E-v-e-n-d-i-d-o-departamento-en-venta-plaza-san-enrique.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,350</span>
    <div class="title">V E N D I D O / Departamento En Venta / Plaza San Enrique</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 34 m² · 98.5 UF/m² · 1D/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 34 m² terreno · 98.5 UF/m² · 1D/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -298,11 +313,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1949397691" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_757361-MLC110305438808_052026-E-local-comercial-en-av-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_757361-MLC110305438808_052026-E-local-comercial-en-av-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,500</span>
    <div class="title">Local Comercial En Av. La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1 - 300 · 37 m² · 94.6 UF/m² · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1 - 300 · 37 m² terreno · 94.6 UF/m² · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -310,11 +325,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Puente Nuevo">
  <button class="fav-btn" data-pid="pMLC3490063398" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_687698-MLC103223729824_012026-E-la-dehesa-venta-oficina-48m-1e1bod-amoblada-vista-despejada.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_687698-MLC103223729824_012026-E-la-dehesa-venta-oficina-48m-1e1bod-amoblada-vista-despejada.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,590</span>
    <div class="title">La Dehesa Venta Oficina 48m 1e1bod Amoblada Vista Despejada</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa | Oficina En Venta 48m2 Con Estacionamiento Y Bodega | Lo Barnechea | One Propiedades · 48 m² · 74.8 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa | Oficina En Venta 48m2 Con Estacionamiento Y Bodega | Lo Barnechea | One Propiedades · 48 m² terreno · 74.8 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -322,11 +337,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Puente Nuevo">
  <button class="fav-btn" data-pid="pMLC3738027006" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_924840-MLC102315684225_122025-E-invierta-en-usted-trabaje-cerca-de-casa-y-no-desde-la-casa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_924840-MLC102315684225_122025-E-invierta-en-usted-trabaje-cerca-de-casa-y-no-desde-la-casa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,800</span>
    <div class="title">Invierta En Usted ,trabaje Cerca De Casa Y No Desde La Casa.</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Vitacura · 46 m² · 82.6 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Vitacura · 46 m² terreno · 82.6 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -334,11 +349,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Puente Nuevo">
  <button class="fav-btn" data-pid="pMLC1748888291" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_633493-MLC80148750759_102024-E-estupenda-oficina-con-excelente-ubicacion-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_633493-MLC80148750759_102024-E-estupenda-oficina-con-excelente-ubicacion-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,850</span>
    <div class="title">Estupenda Oficina Con Excelente Ubicación. Lo Barnechea.</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av. San Josemaría Escrivá De Balaguer 12900 - 13200 · 46 m² · 83.7 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av. San Josemaría Escrivá De Balaguer 12900 - 13200 · 46 m² terreno · 83.7 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -346,7 +361,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Zapallar">
  <button class="fav-btn" data-pid="phttps://click1.portalinmobiliario.com/brand_ads/clicks/MLC/count?a=p5znBhu6az7WGjkFOGv0Lh%2FdxxwFY67dn9eXABzg3jUwShtKGMn3%2FkaAS3dGGI260DyUSYZYLEgMEFLoxuC5kIy1cUu04fUzqx%2BxYXKHDCKGZSq%2Fqp8x8uTPU1uz5Xl7cpMDlg85VD8fjpleM8BcrXGTRMs1gA8YtVhVNmKYsIcMSuFXj2BurzKo7fLP60AAqQ0WVeUGFP%2BdtswgyGfwdvqwXPa9nGjoMCyrQIlZT43H3bztibDbGSr%2FKVvemON7iGWDLK01Y%2FE0SxK2lvbWsI%2BRhD%2BHbO2f%2BhKDIvuvVtheptPAtsZLRtUHczHYqPgA5e%2Bi65Flkll48lbNyWxXPuGb2TTxELaNqxnt8uQIqVijA1IfrCKZYMn3%2FIrg7p9Im8BDNEscH4fQ2a2l9NCBgxS7yCFCqczO6Y0fl%2FPd6u%2FhBDzgXbOVhLeTxMrwuiD%2F8ppo8kRjNkS73oCOAA2OkMmQXSZGcwiPI%2FJBssXPH0HtmKpGWGM%2BPa9Jej7Mx8Fs4P76xTL6cf32%2FMMXpiGfpEu8ZaVdg2cc6aaKubLkpfs%2F8CKQQGTm4%2BxK1CsJpwMURsQLrDPlUtr6Eny0dM3aHCQrk2QVUMve2d0tTEVCRI2z8anVNfQW%2FqfQcH5td9YQvrPseMnaD%2F5dGBcU%2FifNitewBk7wMbV4MV3ZBU%2FrONIWSoOAQBymC3mcSFOTNBQQOBnwx2lfbuRAi7ZoNtmq1gfGa%2B5UExd3FSRn%2FEgOGuoVf53EE1dLVLSO3uvBDcmSLRpZEn68eF5BzUe4wyRaJUKzStGIxbYqjRLvI2PiiC%2BZD0VIQFmcXlpnCbXcP%2FdDTfSoEU3OXE9QRI0aZkmRRt0TpjqnqmCET%2F8EEJRbGGZ5AO%2F1ONRJgfNamew38%2BJKvC1m4wo%2BPmBdfPqOs8OQmHBTVTMLuItdNGkntaOSjW19Raj8U6CS3S1ut88tgGBG%2BqOunNtLpIOgNLQzkd7k7AAd%2FHDv5%2Bb%2BMlNzj3VJN37sIaeXWBzt0ui31jmfrNtf79O5zZtCSOrRBkxnOtW%2FoT%2FR%2BgPyGPFxHfeGbcqRwSrhCfuonziaq9UNsCn0zsTGFy%2FCs5vphmLQyLI%2BogeAbaIZtauxpf4aY%2BeKxMVUTgWD%2BGoRxKtepqStEQ8ruaxjx5tvS5rE2EYk8kOU7ILR6mAj1NMUm8jxzlFxJBGSYn45b6NoGahmt71dw9GafuL3IwNuQBU91%2F1q7Bhy1EN38O2DQr2w36%2F30XZxa9p3hourBU2dKfN%2BI9xks2yMvKC2MUnpMBFXpacbAHZU7Y7jVMFMCrH%2BBo0nEhL17pbuDeZnQW0Du8i83PWce3xQ75ix2nW7T9oPMdudxYdz0xhzBz862jaaxc83NSIyqqQLYJeFa9OtD8PKWENQMNXxhe7j4waXd3JkDEZttmGh0LpIN9oufM64ZHSkJPW%2BawyxJ0kaE0IQh%2BboLdUU45K2GdAVLRWVlaHEva0k57bMW7mrW%2Bj78NYkPYn5jCzXFoNPPAttFJG%2BqkXfPnoIXqYZsvzvHZg4aWJq%2BdeDWvP8PeEvma6lZXCOKW6j12j2N5up%2FUVti4xJSP3G3FwwFw%3D%3D&amp;position=1#polycard_client=search_search-categories&amp;tracking_id=fe436228-e720-4d09-94e0-122ae78a78ec&amp;sid=search" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_919491-MLC112934014525_062026-E-exquisita-casa-en-parcela-de-1ha-en-condominio-en.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_919491-MLC112934014525_062026-E-exquisita-casa-en-parcela-de-1ha-en-condominio-en.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,900</span>
    <div class="title">Exquisita Casa En Parcela De 1ha. En Condominio En...</div>
@@ -358,7 +373,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Laguna De Zapallar">
  <button class="fav-btn" data-pid="pMLC1890434659" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_750096-MLC91928011044_092025-E-venta-de-casa-familiar-sector-la-laguna-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_750096-MLC91928011044_092025-E-venta-de-casa-familiar-sector-la-laguna-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,917</span>
    <div class="title">Venta De Casa Familiar Sector La Laguna, Zapallar</div>
@@ -370,11 +385,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3384673330" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_617796-MLC45652738234_042021-E-la-dehesa-workplaza.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_617796-MLC45652738234_042021-E-la-dehesa-workplaza.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,970</span>
    <div class="title">La Dehesa Workplaza</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av. La Dehesa 222 · 103 m² · 38.5 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av. La Dehesa 222 · 103 m² terreno · 38.5 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -382,11 +397,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="El Huinganal">
  <button class="fav-btn" data-pid="pMLC3824387730" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_631077-MLC109097073444_042026-E-excelente-oportunidad-local-comercial-en-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_631077-MLC109097073444_042026-E-excelente-oportunidad-local-comercial-en-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,990</span>
    <div class="title">Excelente Oportunidad Local Comercial En La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>El Huinganal · 60 m² · 66.5 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>El Huinganal · 60 m² terreno · 66.5 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -394,11 +409,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Plaza San Enrique">
  <button class="fav-btn" data-pid="pMLC4068286928" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_958568-MLC111932318772_062026-E-departamento-en-venta-de-2-dorm-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_958568-MLC111932318772_062026-E-departamento-en-venta-de-2-dorm-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,990</span>
    <div class="title">Departamento En Venta De 2 Dorm. En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>San Josemaría Escriva De Balaguer / Plaza San Enrique · 52 m² · 76.7 UF/m² · 2D/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>San Josemaría Escriva De Balaguer / Plaza San Enrique · 52 m² terreno · 76.7 UF/m² · 2D/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -406,7 +421,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4125836230" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_742368-MLC113855576677_062026-E-casa-amoblada-en-condominio-la-foresta-de-zapallar.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_742368-MLC113855576677_062026-E-casa-amoblada-en-condominio-la-foresta-de-zapallar.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 3,990</span>
    <div class="title">Casa Amoblada En Condominio La Foresta De Zapallar</div>
@@ -418,11 +433,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1836793175" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_750478-MLC105664337377_012026-E-excelente-oficina-raul-labbe-av-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_750478-MLC105664337377_012026-E-excelente-oficina-raul-labbe-av-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,050</span>
    <div class="title">Excelente Oficina Raúl Labbé, Av. La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Chile · 42 m² · 96.4 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Chile · 42 m² terreno · 96.4 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -430,7 +445,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4054685920" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_704160-MLC112872185077_062026-E-hermosa-casa-en-el-centro-de-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_704160-MLC112872185077_062026-E-hermosa-casa-en-el-centro-de-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,100</span>
    <div class="title">Hermosa Casa En El Centro De Catapilco</div>
@@ -442,11 +457,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3168376900" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_761988-MLC92569726826_092025-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_761988-MLC92569726826_092025-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,200</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Portal La Dehesa · 45 m² · 93.3 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Portal La Dehesa · 45 m² terreno · 93.3 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -454,7 +469,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4051101758" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_610260-MLC112799021347_062026-E-parcela-con-casa-en-foresta-de-zapallar-3d3b-sin-comision.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_610260-MLC112799021347_062026-E-parcela-con-casa-en-foresta-de-zapallar-3d3b-sin-comision.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,200</span>
    <div class="title">Parcela Con Casa En Foresta De Zapallar 3d/3b , Sin Comision</div>
@@ -466,7 +481,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Zapallar">
  <button class="fav-btn" data-pid="pMLC4105681028" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_651993-MLC112552974726_062026-E-parcela-de-10000-m2-con-casa-en-catapilco.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_651993-MLC112552974726_062026-E-parcela-de-10000-m2-con-casa-en-catapilco.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,200</span>
    <div class="title">Parcela De 10.000 M/2 Con Casa En Catapilco</div>
@@ -478,11 +493,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3863712708" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_878461-MLC109477515988_042026-E-local-comercial-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_878461-MLC109477515988_042026-E-local-comercial-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,227</span>
    <div class="title">Local Comercial En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa/ Los Cactus · 51 m² · 82.9 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa/ Los Cactus · 51 m² terreno · 82.9 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -490,11 +505,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3825509100" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_805817-MLC83939500987_042025-E-oficina-en-venta-en-lo-barnechea-luminosa-seguridad-247.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_805817-MLC83939500987_042025-E-oficina-en-venta-en-lo-barnechea-luminosa-seguridad-247.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,250</span>
    <div class="title">Oficina En Venta En Lo Barnechea Luminosa Seguridad 24/7</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa- Portal | Oficina En Venta O Arriendo 45m2 | Lo Barnechea · 47 m² · 90.4 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa- Portal | Oficina En Venta O Arriendo 45m2 | Lo Barnechea · 47 m² terreno · 90.4 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -502,11 +517,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1847691219" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_738889-MLC98272606951_112025-E-oficina-amoblada-en-venta-en-corazon-de-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_738889-MLC98272606951_112025-E-oficina-amoblada-en-venta-en-corazon-de-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,300</span>
    <div class="title">Oficina Amoblada En Venta En Corazón De La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1201 · 46 m² · 93.5 UF/m² · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>1201 · 46 m² terreno · 93.5 UF/m² · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -514,11 +529,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1818150887" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_831037-MLC104136260909_012026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_831037-MLC104136260909_012026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,400</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa / Los Cactus · 51 m² · 86.3 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa / Los Cactus · 51 m² terreno · 86.3 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -526,11 +541,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3794456946" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_744298-MLC108572876372_032026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_744298-MLC108572876372_032026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,400</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Excelente Oficina Frente A Protal La Dehesa - Los Cactus · 16 m² · 275.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Excelente Oficina Frente A Protal La Dehesa - Los Cactus · 16 m² terreno · 275.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -538,11 +553,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC2037618111" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_992407-MLC112861819792_072026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_992407-MLC112861819792_072026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,400</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa/ Los Cactus · 50 m² · 88.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Av La Dehesa/ Los Cactus · 50 m² terreno · 88.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -550,11 +565,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1938096419" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_930796-MLC110848584715_042026-E-local-comercial-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_930796-MLC110848584715_042026-E-local-comercial-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,440</span>
    <div class="title">Local Comercial En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>AV LA DEHESA-LOS CACTUS · 52 m² · 85.4 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>AV LA DEHESA-LOS CACTUS · 52 m² terreno · 85.4 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -562,11 +577,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3585403632" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_949190-MLC103752270958_012026-E-excelente-oficina-con-linda-vista-y-ubicacion-iluminada.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_949190-MLC103752270958_012026-E-excelente-oficina-con-linda-vista-y-ubicacion-iluminada.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,500</span>
    <div class="title">Excelente Oficina Con Linda Vista Y Ubicacion, Iluminada!!</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 50 m² · 90.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Lo Barnechea · 50 m² terreno · 90.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -574,11 +589,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC1692806293" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_854035-MLC91963807939_092025-E-excelente-oficina-en-venta-sector-mall-portal-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_854035-MLC91963807939_092025-E-excelente-oficina-en-venta-sector-mall-portal-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,500</span>
    <div class="title">Excelente Oficina En Venta Sector Mall Portal La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Mall Portal La Dehesa · 53 m² · 84.9 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Mall Portal La Dehesa · 53 m² terreno · 84.9 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -586,11 +601,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC4089144066" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_868388-MLC70563051127_072023-E-oficina-av-la-dehesa-1201-profesionales.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_868388-MLC70563051127_072023-E-oficina-av-la-dehesa-1201-profesionales.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,500</span>
    <div class="title">Oficina. Av La Dehesa 1201. Profesionales.</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Chile · 50 m² · 90.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Chile · 50 m² terreno · 90.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -598,11 +613,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Avenida La Dehesa/Avenida La Dehesa">
  <button class="fav-btn" data-pid="pMLC3571882212" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_643405-MLC106687795546_022026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_643405-MLC106687795546_022026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,500</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Avenida La Dehesa/Avenida La Dehesa · 40 m² · 112.5 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Avenida La Dehesa/Avenida La Dehesa · 40 m² terreno · 112.5 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -610,11 +625,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3945301404" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_713826-MLC110359044084_052026-E-23163-espectacular-vista-a-pasos-del-portal-la-dehesa.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_713826-MLC110359044084_052026-E-23163-espectacular-vista-a-pasos-del-portal-la-dehesa.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,590</span>
    <div class="title">23163 - Espectacular Vista, A Pasos Del Portal La Dehesa</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa · 50 m² · 91.8 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>La Dehesa · 50 m² terreno · 91.8 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -622,7 +637,7 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Zapallar" data-ptype="casa" data-sector="Catapilco">
  <button class="fav-btn" data-pid="pMLC4050078814" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_687647-MLC114248473139_072026-E-zapallar-tranquilidad-a-pasos-de-la-ciudad.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_687647-MLC114248473139_072026-E-zapallar-tranquilidad-a-pasos-de-la-ciudad.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,652</span>
    <div class="title">¡zapallar, Tranquilidad A Pasos De La Ciudad!</div>
@@ -634,11 +649,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="Puente Nuevo">
  <button class="fav-btn" data-pid="pMLC3879680826" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_854455-MLC83660946188_042025-E-las-condes.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_854455-MLC83660946188_042025-E-las-condes.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,700</span>
    <div class="title">Las Condes</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>LAS CONDES · 44 m² · 106.8 UF/m² · 1D/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>LAS CONDES · 44 m² terreno · 106.8 UF/m² · 1D/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -646,11 +661,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC3756419204" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_684149-MLC108715671919_032026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_684149-MLC108715671919_032026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,800</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Ubicación Privilegiada · 50 m² · 96.0 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>Ubicación Privilegiada · 50 m² terreno · 96.0 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -658,11 +673,11 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 </div>
 <div class="card prop" data-zona="Lo Barnechea" data-ptype="terreno" data-sector="La Dehesa">
  <button class="fav-btn" data-pid="pMLC4155683136" aria-label="marcar favorita">☆</button>
- <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_807576-MLC112806942180_072026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="72" height="72" loading="lazy">
+ <div class="row"><img src="https://http2.mlstatic.com/D_NQ_NP_2X_807576-MLC112806942180_072026-E-oficina-en-venta-en-lo-barnechea.webp" alt="" width="96" height="96" loading="lazy">
   <div style="min-width:0;flex:1">
    <span class="price">UF 4,950</span>
    <div class="title">Oficina En Venta En Lo Barnechea</div>
-   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>AV. LA DEHESA / LOS CACTUS 56 Mts · 56 m² · 88.4 UF/m²/1B · 0 días en radar</div>
+   <div class="meta"><span class="zt zt-z">Lo Barnechea · </span><span class="zt zt-t">terreno · </span>AV. LA DEHESA / LOS CACTUS 56 Mts · 56 m² terreno · 88.4 UF/m²/1B · 0 días en radar</div>
   </div>
  </div>
  <div></div>
@@ -701,17 +716,22 @@ function cardHTML(pid,p,extra){
  if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
- var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="72" height="72" loading="lazy">':'';
+ var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="96" height="96" loading="lazy">':'';
  var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
  var zt=(p.z?'<span class="zt zt-z">'+esc(p.z)+' · </span>':'')
        +(p.pt?'<span class="zt zt-t">'+esc(p.pt)+' · </span>':'');
  var pub='';
  if(p.pub)pub=' · publicado hace '+humanDays(daysFrom(p.pub));
+ var area;
+ if(p.pt==='terreno')area=(p.m2t||p.m2)+' m² terreno';
+ else if(p.m2c&&p.m2t)area=p.m2c+' m² const · '+p.m2t+' m² terreno';
+ else if(p.m2c)area=p.m2c+' m² const';
+ else area=p.m2+' m²';
  return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">☆</button>'+
   '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
   '<span class="price">'+price+'</span>'+
   '<div class="title">'+esc(p.t)+'</div>'+
-  '<div class="meta">'+zt+esc(p.s||'')+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+daysFrom(p.fs)+' días en radar'+pub+'</div>'+
+  '<div class="meta">'+zt+esc(p.s||'')+' · '+area+' · '+p.ufm2+' UF/m²'+db+' · '+daysFrom(p.fs)+' días en radar'+pub+'</div>'+
   '</div></div>'+(extra||'')+'<div>'+badges+'</div><div class="links">'+links+'</div></div>';
 }
 var FKEY='radar_filters';
@@ -759,12 +779,17 @@ function applyFilters(){
   });
   shown=PAGE;
   renderInv();
-  document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
+  document.querySelectorAll('#filter-bar .chip[data-v]').forEach(function(ch){
    ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
   });
   var il=document.getElementById('inv-list');
   il.classList.toggle('show-zona',f.z==='all');
   il.classList.toggle('show-tipo',f.t==='all');
+  var any=f.z!=='all'||f.t!=='all'||f.s!=='all';
+  document.getElementById('clear-filters').style.display=any?'':'none';
+  var st=document.getElementById('sec-toggle');
+  st.textContent=f.s==='all'?'Sectores ▾':'Sector: '+(f.s==='__otros__'?'Otros':f.s)+' ▾';
+  if(f.s!=='all')document.getElementById('sec-chips').classList.remove('collapsed');
  }catch(e){
   // ante cualquier error queda lo servido por el servidor: todo visible
   console.error('radar filtros:',e);
@@ -862,8 +887,21 @@ document.addEventListener('click',function(e){
  if(b){safe('favorita',function(){toggleFav(b.dataset.pid)});return}
  var x=e.target.closest('#fav-export');
  if(x){safe('exportar',function(){exportFavs(x)});return}
+ if(e.target.closest('#clear-filters')){
+  safe('limpiar',function(){
+   localStorage.setItem(FKEY,JSON.stringify({z:'all',t:'all',s:'all'}));
+   applyFilters();
+  });
+  return;
+ }
+ if(e.target.closest('#sec-toggle')){
+  safe('sectores',function(){
+   document.getElementById('sec-chips').classList.toggle('collapsed');
+  });
+  return;
+ }
  var chp=e.target.closest('#filter-bar .chip');
- if(chp){
+ if(chp&&chp.dataset.v){
   safe('filtros',function(){
    var f=getFilters();
    f[chp.parentElement.dataset.group]=chp.dataset.v;

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Metodología — Radar Inmobiliario</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
+:root{--paper:#F4F7F4;--ink:#16262B;--muted:#5C6B66;--line:#D9E1DA;--green:#1E7A52;--deep:#0C4A33;--gsoft:#E4F1E9;--amber:#A66300;--asoft:#F6EDDC;--red:#A63D2F;--rsoft:#F5E6E2;--shadow:0 1px 3px rgba(22,38,43,.07),0 1px 2px rgba(22,38,43,.05)}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:'Public Sans',sans-serif}
+header{background:var(--deep);color:#fff;padding:18px 16px 14px}
+.wrap{max-width:680px;margin:0 auto;padding:0 16px}
+h1{font-family:'Archivo',sans-serif;font-weight:800;font-size:21px;letter-spacing:-.02em;margin:0}
+.sub{font-family:'IBM Plex Mono',monospace;font-size:12px;opacity:.8;margin-top:6px;line-height:1.6}
+.sub a{color:#fff;text-decoration:underline;text-underline-offset:3px}
+h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;margin:34px 0 6px;padding-top:6px}
+.card{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0;box-shadow:var(--shadow)}
+.row{display:flex;gap:14px;align-items:flex-start}
+.row img{width:96px;height:96px;object-fit:cover;border-radius:10px;background:var(--gsoft);flex-shrink:0}
+.price{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;color:var(--deep);letter-spacing:-.01em}
+.title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.35;margin-top:4px;padding-right:40px}
+.meta{font-size:12px;color:var(--muted);margin-top:6px;font-family:'IBM Plex Mono',monospace;line-height:1.6}
+.badge{display:inline-block;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin:8px 6px 0 0;letter-spacing:.01em}
+.b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}
+.pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:10px}
+.pchg.down{color:var(--green)}.pchg.up{color:var(--red)}
+a.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;margin:10px 8px 0 0;padding:0 14px;min-height:40px;min-width:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--deep);font-weight:600;font-size:12.5px;text-decoration:none;cursor:pointer;font-family:'Public Sans',sans-serif}
+a.btn:active,button.btn:active{background:var(--gsoft)}
+.fav-btn{position:absolute;top:6px;right:6px;width:44px;height:44px;border:none;background:none;font-size:23px;line-height:1;color:var(--amber);cursor:pointer;padding:0}
+.note{background:var(--asoft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;margin:12px 0;line-height:1.5}
+.empty{font-size:13px;color:var(--muted);margin:8px 0 4px;line-height:1.5}
+footer{font-size:11px;color:var(--muted);text-align:center;padding:28px 16px;line-height:1.6}
+#filter-wrap{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1px solid var(--line);padding:6px 0 8px;box-shadow:0 2px 6px rgba(22,38,43,.05)}
+.chip-group{display:flex;flex-wrap:wrap;align-items:center;margin:4px 0 0}
+.chip{min-height:40px;min-width:40px;padding:6px 13px;margin:4px 6px 0 0;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font-size:12.5px;cursor:pointer;font-family:'Public Sans',sans-serif}
+.chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
+#clear-filters{border-color:var(--red);color:var(--red)}
+#inv-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin:6px 2px 0}
+#sec-chips.collapsed{display:none}
+#inv-list:not(.show-zona) .zt-z{display:none}
+#inv-list:not(.show-tipo) .zt-t{display:none}
+table.stats{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+table.stats th,table.stats td{border-bottom:1px solid var(--line);padding:8px 6px;text-align:right;font-family:'IBM Plex Mono',monospace}
+table.stats th{font-family:'Archivo',sans-serif;font-size:12px;color:var(--muted)}
+table.stats td:first-child,table.stats th:first-child{text-align:left;font-family:'Public Sans',sans-serif}
+.method p{font-size:14px;line-height:1.65;margin:10px 0}
+.method h2{font-family:'Archivo',sans-serif;font-size:17px;margin:28px 0 4px}
+</style></head><body>
+<header><div class="wrap">
+ <h1>METODOLOGÍA Y ESTADÍSTICAS</h1>
+ <div class="sub">2026-07-19 · <a href="index.html">← Volver al radar</a></div>
+</div></header>
+<div class="wrap method">
+<h2>Estadísticas por zona y tipo</h2>
+<p>Medianas calculadas por separado para cada grupo (nunca mezcladas).
+En casas el UF/m² se calcula sobre m² construidos cuando el aviso los
+declara; en terrenos, sobre m² de terreno.</p>
+<table class="stats"><tr><th>Grupo</th><th>n</th><th>UF/m² med</th><th>p25–p75</th><th>m² med</th><th>UF med</th></tr><tr><td>Lo Barnechea · casas</td><td>2042</td><td>90.1</td><td>77.5–103.4</td><td>321</td><td>28,000</td></tr><tr><td>Lo Barnechea · terrenos</td><td>782</td><td>97.9</td><td>79.9–112.2</td><td>140</td><td>14,800</td></tr><tr><td>Zapallar · casas</td><td>751</td><td>108.3</td><td>77.8–155.3</td><td>240</td><td>26,500</td></tr><tr><td>Zapallar · terrenos</td><td>88</td><td>18.1</td><td>5.8–123.3</td><td>1,796</td><td>23,550</td></tr></table>
+<h2>Fuente</h2>
+<p>Avisos públicos de venta en Portal Inmobiliario para las zonas
+configuradas (Lo Barnechea y Zapallar; casas y terrenos), recorridos en
+una corrida diaria alrededor de las 3–4 AM de Chile. Los precios son
+<b>de lista</b> — lo que pide el vendedor —, no precios de cierre.</p>
+<h2>Deduplicación</h2>
+<p>Una misma propiedad suele publicarse varias veces (distintas
+corredoras, republicaciones). El radar agrupa avisos comparando las
+<b>fotos con hash perceptual</b> (la señal más confiable: las fotos se
+reutilizan entre avisos aunque cambie el texto), más atributos: comuna,
+tipo, superficie (±5%, en casas priorizando m² construidos) y
+dormitorios. El texto y el vendedor solo fusionan con umbrales estrictos,
+y si las fotos de dos avisos no coinciden, nunca se fusionan por texto:
+preferimos duplicar antes que mezclar casas distintas.</p>
+<h2>«Días en radar» vs «publicado hace»</h2>
+<p><b>Días en radar</b> es nuestra medición: desde que la propiedad
+(deduplicada) apareció por primera vez en una corrida. <b>Publicado
+hace</b> es lo que declara el aviso, y se resetea cuando el vendedor
+republica. Si el aviso dice «hace 3 días» pero lleva meses en el radar,
+es señal de republicación encubierta.</p>
+<h2>Limitaciones</h2>
+<p>No hay historial anterior al inicio del radar (julio 2026), así que
+los «días en radar» de las propiedades más antiguas subestiman su tiempo
+real en el mercado. Los atributos los digita cada corredora y pueden
+venir incorrectos (m², dormitorios, sector). Las superficies separadas
+(construida/terreno) se completan gradualmente visitando páginas de
+detalle. La deduplicación es probabilística: puede unir de menos
+(duplicados visibles) y rara vez de más.</p>
+</div>
+<footer>Radar Inmobiliario · datos de avisos públicos · verifica siempre en terreno y títulos antes de decidir.</footer>
+</body></html>
