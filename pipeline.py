@@ -1209,6 +1209,7 @@ def add_rationales(entries, props, cfg):
 # ---------------------------------------------------------------- reporte
 
 INACTIVE_DAYS = 7  # sin aparecer en la ingesta → inactiva (vendida/retirada)
+INV_PAGE = 50      # tarjetas por página del inventario (server y "Mostrar más")
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;600&family=Public+Sans:wght@400;600&display=swap');
@@ -1244,26 +1245,30 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:24px 16px;lin
 
 
 def prop_public(pid, p, active):
-    """Datos por propiedad para el JSON embebido (favoritas en JS)."""
-    return {
+    """Datos por propiedad para el JSON embebido — solo lo que el JS usa,
+    compacto (hist como pares [fecha, uf]; claves vacías fuera) para no
+    inflar la página."""
+    out = {
         "t": p["title"],
         "s": p.get("sector") or p.get("comuna") or "",
+        "sec": p.get("comuna") or "",
         "uf": p["priceUF"],
         "m2": round(p["m2"]),
         "ufm2": round(p["priceUF"] / p["m2"], 1),
         "d": p.get("dorms"),
         "b": p.get("baths"),
-        "days": days_since(p["firstSeen"]),
         "links": [u for u in p["listings"].values() if u],
         "rep": p.get("repubs", 0),
         "act": active,
         "img": (p.get("thumb") or ""),
         "fs": p["firstSeen"],
-        "hist": p["priceHist"],
+        "hist": [[h["d"], h["uf"]] for h in p["priceHist"]],
         "z": p.get("zona") or p.get("scope") or "",
         "pt": p.get("ptype") or "",
         "pub": p.get("pub_estimada"),
     }
+    return {k: v for k, v in out.items()
+            if v or k in ("act", "uf", "m2", "hist", "fs", "t", "links")}
 
 
 def card_html(pid, p, extra_html="", extra_badges=""):
@@ -1280,7 +1285,8 @@ def card_html(pid, p, extra_html="", extra_badges=""):
     badges = extra_badges
     if p.get("repubs"):
         badges += f'<span class="badge b-a">republicada ×{p["repubs"]}</span>'
-    img = f'<img src="{esc(p["thumb"])}" alt="" loading="lazy">' if p.get("thumb") else ""
+    img = (f'<img src="{esc(p["thumb"])}" alt="" width="72" height="72" '
+           'loading="lazy">') if p.get("thumb") else ""
     sector = p.get("sector") or p.get("comuna") or "—"
     db_txt = ""
     if p.get("dorms"):
@@ -1329,6 +1335,9 @@ function humanDays(n){
  if(n<365){var m=Math.max(1,Math.round(n/30));return '~'+m+(m===1?' mes':' meses')}
  var y=Math.max(1,Math.round(n/365));return '~'+y+(y===1?' año':' años');
 }
+function daysFrom(iso){
+ try{return Math.max(0,Math.round((Date.now()-new Date(iso+'T12:00:00'))/864e5))}catch(e){return 0}
+}
 function cardHTML(pid,p,extra){
  var ls=p.links||[];
  var links=ls.length>1
@@ -1338,16 +1347,17 @@ function cardHTML(pid,p,extra){
  if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
- var img=p.img?'<img src="'+esc(p.img)+'" alt="" loading="lazy">':'';
+ var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="72" height="72" loading="lazy">':'';
  var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
- var zt=(p.z?esc(p.z)+' · ':'')+(p.pt?esc(p.pt)+' · ':'');
+ var zt=(p.z?'<span class="zt zt-z">'+esc(p.z)+' · </span>':'')
+       +(p.pt?'<span class="zt zt-t">'+esc(p.pt)+' · </span>':'');
  var pub='';
- if(p.pub){var pd=Math.max(0,Math.round((Date.now()-new Date(p.pub+'T12:00:00'))/864e5));pub=' · publicado hace '+humanDays(pd)}
+ if(p.pub)pub=' · publicado hace '+humanDays(daysFrom(p.pub));
  return '<div class="card prop"><button class="fav-btn" data-pid="'+esc(pid)+'">☆</button>'+
   '<div class="row">'+img+'<div style="min-width:0;flex:1">'+
   '<span class="price">'+price+'</span>'+
   '<div class="title">'+esc(p.t)+'</div>'+
-  '<div class="meta">'+zt+esc(p.s)+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+p.days+' días en radar'+pub+'</div>'+
+  '<div class="meta">'+zt+esc(p.s||'')+' · '+p.m2+' m² · '+p.ufm2+' UF/m²'+db+' · '+daysFrom(p.fs)+' días en radar'+pub+'</div>'+
   '</div></div>'+(extra||'')+'<div>'+badges+'</div><div class="links">'+links+'</div></div>';
 }
 var FKEY='radar_filters';
@@ -1361,19 +1371,40 @@ function mainSectors(){
   function(c){return c.dataset.v}
  ).filter(function(v){return v!=='all'&&v!=='__otros__'});
 }
+var PAGE=50, shown=PAGE, filtered=[];
+var ORDER=Object.keys(DATA).filter(function(pid){return DATA[pid].act})
+ .sort(function(a,b){var A=DATA[a],B=DATA[b];
+  return B.fs.localeCompare(A.fs)||A.uf-B.uf});
+function invCards(pids){
+ return pids.map(function(pid){return cardHTML(pid,DATA[pid])}).join('');
+}
+function renderInv(){
+ var il=document.getElementById('inv-list');
+ il.innerHTML=invCards(filtered.slice(0,shown))
+   ||'<div class="empty">Sin propiedades con estos filtros.</div>';
+ updateMore();
+ syncStars();
+}
+function updateMore(){
+ var n=filtered.length;
+ document.getElementById('inv-count').textContent=n+(n===1?' propiedad':' propiedades');
+ var mb=document.getElementById('more-btn');
+ var rest=n-shown;
+ mb.style.display=rest>0?'':'none';
+ if(rest>0)mb.textContent='Mostrar '+Math.min(PAGE,rest)+' más ('+rest+' restantes)';
+}
 function applyFilters(){
  try{
-  var f=getFilters(),n=0,MAIN=mainSectors();
-  document.querySelectorAll('#inv-list .prop').forEach(function(c){
-   var okz=f.z==='all'||c.dataset.zona===f.z;
-   var okt=f.t==='all'||c.dataset.ptype===f.t;
-   var sec=c.dataset.sector||'';
+  var f=getFilters(),MAIN=mainSectors();
+  filtered=ORDER.filter(function(pid){var p=DATA[pid];
+   var okz=f.z==='all'||p.z===f.z;
+   var okt=f.t==='all'||p.pt===f.t;
+   var sec=p.sec||'';
    var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
-   var ok=okz&&okt&&oks;
-   c.style.display=ok?'':'none';
-   if(ok)n++;
+   return okz&&okt&&oks;
   });
-  document.getElementById('inv-count').textContent=n+(n===1?' propiedad':' propiedades');
+  shown=PAGE;
+  renderInv();
   document.querySelectorAll('#filter-bar .chip').forEach(function(ch){
    ch.classList.toggle('on',f[ch.parentElement.dataset.group]===ch.dataset.v);
   });
@@ -1381,10 +1412,17 @@ function applyFilters(){
   il.classList.toggle('show-zona',f.z==='all');
   il.classList.toggle('show-tipo',f.t==='all');
  }catch(e){
-  // ante cualquier error: estado por defecto = todo visible
+  // ante cualquier error queda lo servido por el servidor: todo visible
   console.error('radar filtros:',e);
-  document.querySelectorAll('#inv-list .prop').forEach(function(c){c.style.display=''});
  }
+}
+function showMore(){
+ var start=shown;
+ shown+=PAGE;
+ document.getElementById('inv-list')
+  .insertAdjacentHTML('beforeend',invCards(filtered.slice(start,shown)));
+ updateMore();
+ syncStars();
 }
 function renderFavs(){
  var favs=getFavs(),box=document.getElementById('favs-list');
@@ -1410,10 +1448,10 @@ function renderNews(){
   var p=DATA[pid];
   if(!p.act||!p.fs)return;
   if(isNew(p.fs)){news.push([pid,p]);return}
-  var hist=p.hist||[];
-  var before=hist.filter(function(h){return !isNew(h.d)});
+  var hist=p.hist||[];  // pares [fecha, uf]
+  var before=hist.filter(function(h){return !isNew(h[0])});
   if(before.length&&hist.length>before.length){
-   var prev=before[before.length-1].uf,cur=hist[hist.length-1].uf;
+   var prev=before[before.length-1][1],cur=hist[hist.length-1][1];
    if(prev!==cur)chgs.push([pid,p,prev,cur]);
   }
  });
@@ -1480,6 +1518,7 @@ document.addEventListener('click',function(e){
   });
   return;
  }
+ if(e.target.closest('#more-btn')){safe('mostrar más',showMore);return}
  var m=e.target.closest('#mark-seen');
  if(m){
   safe('visto',function(){
@@ -1572,14 +1611,16 @@ def render_report(props, cfg):
         if len(p["priceHist"]) >= 2 and p["priceHist"][-1]["d"] == today
     )
 
-    # --- inventario completo: plano, más recientes primero, precio ascendente
+    # --- inventario: el servidor entrega solo la primera página de tarjetas;
+    #     el resto lo agrega JS desde el JSON ("Mostrar 50 más"). Renderizar
+    #     2.000+ tarjetas de una revienta el renderer en móviles.
     inv_sorted = sorted(
         active.items(),
         key=lambda kv: (kv[1]["firstSeen"], -kv[1]["priceUF"]),
         reverse=True,
     )
     inv_html = "".join(
-        card_html(pid, p) for pid, p in inv_sorted
+        card_html(pid, p) for pid, p in inv_sorted[:INV_PAGE]
     ) or '<div class="empty">Inventario vacío.</div>'
 
     # --- JSON embebido (activas + inactivas del scope, para favoritas)
@@ -1618,6 +1659,8 @@ def render_report(props, cfg):
 <div id="inv-list">
 {inv_html}
 </div>
+<button id="more-btn" class="btn" style="display:none">Mostrar 50 más</button>
+<noscript><div class="note">Sin JavaScript solo se muestran las primeras {INV_PAGE} propiedades.</div></noscript>
 </div>
 <footer>Inventario deduplicado de avisos públicos: los precios son de lista, no de venta. «Publicado hace» es lo que declara el aviso (se resetea al republicar); «días en radar» es nuestra medición tras deduplicar — si difieren mucho, probable republicación encubierta. Propiedades sin aparecer por {INACTIVE_DAYS} días se retiran del inventario (vendidas o despublicadas). Verifica siempre en terreno y títulos antes de decidir.</footer>
 <script type="application/json" id="inv-data">{inv_json}</script>
