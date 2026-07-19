@@ -463,7 +463,7 @@ def _path_variants(path):
     variants = [path]
     base, _, slug = path.rstrip("/").rpartition("/")
     parts = slug.split("-")
-    for i in range(1, min(len(parts) - 1, 4)):
+    for i in range(1, min(len(parts), 4)):
         variants.append(f"{base}/{'-'.join(parts[i:])}")
     return variants
 
@@ -522,9 +522,14 @@ def fetch_pages(cfg):
         working = first = None
         for cand in (_path_variants(path) if custom else [path]):
             status, page = _get_search_html(session, PI_BASE + cand)
-            if status in (0, -1):
-                print("Corto el scraping con lo acumulado")
+            if status == -1:
+                # challenge/captcha: única condición que aborta todo
+                print("Challenge detectado: corto el scraping con lo acumulado")
                 return items
+            if status == 0:
+                # error de red: probar la siguiente variante/ruta
+                time.sleep(2.5)
+                continue
             batch, strategy = parse_search_page(page, ptype) if status == 200 else ([], "-")
             if batch:
                 working, first = cand, (batch, strategy)
@@ -557,13 +562,16 @@ def fetch_pages(cfg):
                 time.sleep(2.5)  # ritmo respetuoso con el sitio
                 url = PI_BASE + working + f"_Desde_{offset + 1}"
                 status, page = _get_search_html(session, url)
-                if status in (0, -1):
-                    print("Corto el scraping con lo acumulado")
+                if status == -1:
+                    # challenge/captcha: única condición que aborta todo
+                    print("Challenge detectado: corto el scraping con lo acumulado")
                     return items
                 if status != 200:
-                    print(f"ADVERTENCIA: HTTP {status} en {url}; "
-                          "corto con lo acumulado")
-                    return items
+                    # un 404 en paginación avanzada es el fin natural del
+                    # listado; sigue con la próxima search_path
+                    print(f"[{zona}/{ptype}] HTTP {status} en página "
+                          f"{page_n + 1}: fin de este listado")
+                    break
                 batch, strategy = parse_search_page(page, ptype)
             if not batch:
                 print(f"[{zona}/{ptype}] página {page_n + 1} sin avisos; "
@@ -594,6 +602,8 @@ def fetch_pages(cfg):
                     break
             elif page_n >= per_search:
                 break
+        print(f"[{zona}/{ptype}] listado completado "
+              f"(acumulado total: {len(items)} avisos)")
     return items
 
 
@@ -913,11 +923,23 @@ def find_match(cand, props, counters=None):
     return None
 
 
+SCHEMA_VERSION = 2  # 2 = reparación de fusiones pre-pHash ya aplicada
+
+
+def apply_repairs(db, props):
+    """Reparaciones únicas de esquema, idempotentes vía db['schema_version']:
+    la separación de fusiones pre-pHash corre una sola vez en la vida de la
+    base (re-separar cada día deshacía y rehacía las mismas fusiones)."""
+    if db.get("schema_version", 1) < 2:
+        split_merged(props)
+    db["schema_version"] = SCHEMA_VERSION
+
+
 def split_merged(props):
-    """Reparación única: separa cada propiedad con múltiples avisos en una
-    propiedad por aviso (conservando firstSeen y el historial de precios
-    actual, que no es separable por aviso). La próxima ingesta re-fusiona
-    con las reglas nuevas, ya con fotos."""
+    """Reparación única (ver apply_repairs): separa cada propiedad con
+    múltiples avisos en una propiedad por aviso (conservando firstSeen y el
+    historial de precios actual, que no es separable por aviso). La próxima
+    ingesta re-fusiona con las reglas nuevas, ya con fotos."""
     split = 0
     for pid in list(props):
         p = props[pid]
@@ -1630,7 +1652,8 @@ def render_report(props, cfg):
         if p.get("ptype") in ("casa", "terreno")
         and p.get("scope", "") in scopes
     }
-    inv_json = json.dumps(inv_data, ensure_ascii=False).replace("</", "<\\/")
+    inv_json = json.dumps(inv_data, ensure_ascii=False,
+                          separators=(",", ":")).replace("</", "<\\/")
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     REPORT_PATH.write_text(f"""<!doctype html>
@@ -1683,7 +1706,7 @@ def main():
     detailed = db.get("detailed", {})  # lids con página de detalle visitada
     pubdates = db.get("pubdates", {})  # fecha declarada de publicación por lid
     migrate_db(props)
-    split_merged(props)
+    apply_repairs(db, props)
 
     uf = get_uf(cfg)
     items = fetch_pages(cfg)
@@ -1698,6 +1721,7 @@ def main():
         "hashed": hashed,
         "detailed": detailed,
         "pubdates": pubdates,
+        "schema_version": db.get("schema_version", SCHEMA_VERSION),
         "updated": datetime.now(timezone.utc).isoformat(),
     })
     print("Pipeline OK")
