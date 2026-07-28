@@ -35,7 +35,14 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:28px 16px;lin
 .chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
 #clear-filters{border-color:var(--red);color:var(--red)}
 #inv-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin:6px 2px 0}
-#sec-chips.collapsed{display:none}
+.hidden{display:none!important}
+#sheet-backdrop{position:fixed;inset:0;background:rgba(12,74,51,.45);z-index:90}
+#sec-sheet{position:fixed;left:0;right:0;bottom:0;z-index:95;background:var(--paper);border-radius:16px 16px 0 0;max-height:50vh;display:flex;flex-direction:column;box-shadow:0 -6px 28px rgba(0,0,0,.25);padding:12px 14px calc(14px + env(safe-area-inset-bottom))}
+.sheet-head{display:flex;gap:8px;align-items:center;flex-shrink:0}
+#sec-search{flex:1;min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:'Public Sans',sans-serif;background:#fff}
+#sheet-close{flex-shrink:0;min-width:44px;font-size:16px}
+.sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:8px}
+.sheet-sub{font-family:'Archivo',sans-serif;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:12px 2px 2px}
 #inv-list:not(.show-zona) .zt-z{display:none}
 #inv-list:not(.show-tipo) .zt-t{display:none}
 table.stats{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
@@ -54,7 +61,7 @@ table.stats td:first-child,table.stats th:first-child{text-align:left;font-famil
 <p>Medianas calculadas por separado para cada grupo (nunca mezcladas).
 En casas el UF/m² se calcula sobre m² construidos cuando el aviso los
 declara; en terrenos, sobre m² de terreno.</p>
-<table class="stats"><tr><th>Grupo</th><th>n</th><th>UF/m² med</th><th>p25–p75</th><th>m² med</th><th>UF med</th></tr><tr><td>Lo Barnechea · casas</td><td>2146</td><td>90.2</td><td>77.8–103.3</td><td>310</td><td>27,000</td></tr><tr><td>Lo Barnechea · terrenos</td><td>863</td><td>98.5</td><td>81.6–111.9</td><td>140</td><td>14,500</td></tr><tr><td>Zapallar · casas</td><td>773</td><td>106.5</td><td>76.8–155.6</td><td>231</td><td>26,500</td></tr><tr><td>Zapallar · terrenos</td><td>90</td><td>18.2</td><td>5.8–128.0</td><td>1,582</td><td>24,750</td></tr></table>
+<table class="stats"><tr><th>Grupo</th><th>n</th><th>UF/m² med</th><th>p25–p75</th><th>m² med</th><th>UF med</th></tr><tr><td>Lo Barnechea · casas</td><td>2254</td><td>90.3</td><td>77.8–103.3</td><td>306</td><td>27,000</td></tr><tr><td>Lo Barnechea · terrenos</td><td>919</td><td>98.5</td><td>82.1–111.9</td><td>140</td><td>14,500</td></tr><tr><td>Zapallar · casas</td><td>773</td><td>106.4</td><td>76.8–155.6</td><td>231</td><td>26,500</td></tr><tr><td>Zapallar · terrenos</td><td>90</td><td>18.2</td><td>5.8–128.0</td><td>1,582</td><td>24,750</td></tr></table>
 <h2>Fuente</h2>
 <p>Avisos públicos de venta en Portal Inmobiliario para las zonas
 configuradas (Lo Barnechea y Zapallar; casas y terrenos), recorridos en
