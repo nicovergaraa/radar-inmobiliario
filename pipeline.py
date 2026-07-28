@@ -1381,7 +1381,14 @@ footer{font-size:11px;color:var(--muted);text-align:center;padding:28px 16px;lin
 .chip.on{background:var(--deep);color:#fff;border-color:var(--deep);font-weight:600}
 #clear-filters{border-color:var(--red);color:var(--red)}
 #inv-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin:6px 2px 0}
-#sec-chips.collapsed{display:none}
+.hidden{display:none!important}
+#sheet-backdrop{position:fixed;inset:0;background:rgba(12,74,51,.45);z-index:90}
+#sec-sheet{position:fixed;left:0;right:0;bottom:0;z-index:95;background:var(--paper);border-radius:16px 16px 0 0;max-height:50vh;display:flex;flex-direction:column;box-shadow:0 -6px 28px rgba(0,0,0,.25);padding:12px 14px calc(14px + env(safe-area-inset-bottom))}
+.sheet-head{display:flex;gap:8px;align-items:center;flex-shrink:0}
+#sec-search{flex:1;min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:'Public Sans',sans-serif;background:#fff}
+#sheet-close{flex-shrink:0;min-width:44px;font-size:16px}
+.sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:8px}
+.sheet-sub{font-family:'Archivo',sans-serif;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:12px 2px 2px}
 #inv-list:not(.show-zona) .zt-z{display:none}
 #inv-list:not(.show-tipo) .zt-t{display:none}
 table.stats{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
@@ -1533,9 +1540,38 @@ function getFilters(){
 }
 function mainSectors(){
  return Array.prototype.map.call(
-  document.querySelectorAll('#filter-bar [data-group="s"] .chip'),
+  document.querySelectorAll('#sec-sheet .sec-chip'),
   function(c){return c.dataset.v}
  ).filter(function(v){return v!=='all'&&v!=='__otros__'});
+}
+function foldTxt(s){
+ return String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');
+}
+function openSheet(){
+ var f=getFilters();
+ // con filtro de zona activo, solo los sectores de esa zona
+ document.querySelectorAll('#sec-sheet .sheet-group').forEach(function(g){
+  var z=g.dataset.zona;
+  g.style.display=(!z||f.z==='all'||z===f.z)?'':'none';
+ });
+ var inp=document.getElementById('sec-search');
+ inp.value='';
+ sheetSearch('');
+ document.querySelectorAll('#sec-sheet .sec-chip').forEach(function(c){
+  c.classList.toggle('on',c.dataset.v===f.s);
+ });
+ document.getElementById('sheet-backdrop').classList.remove('hidden');
+ document.getElementById('sec-sheet').classList.remove('hidden');
+}
+function closeSheet(){
+ document.getElementById('sheet-backdrop').classList.add('hidden');
+ document.getElementById('sec-sheet').classList.add('hidden');
+}
+function sheetSearch(q){
+ q=foldTxt(q);
+ document.querySelectorAll('#sec-sheet .sec-chip').forEach(function(c){
+  c.style.display=(!q||foldTxt(c.textContent).indexOf(q)>=0)?'':'none';
+ });
 }
 var PAGE=50, shown=PAGE, filtered=[];
 var ORDER=Object.keys(DATA).filter(function(pid){return DATA[pid].act})
@@ -1574,8 +1610,7 @@ function applyFilters(){
   var any=f.z!=='all'||f.t!=='all'||f.s!=='all';
   document.getElementById('clear-filters').style.display=any?'':'none';
   var st=document.getElementById('sec-toggle');
-  st.textContent=f.s==='all'?'Sectores ▾':'Sector: '+(f.s==='__otros__'?'Otros':f.s)+' ▾';
-  if(f.s!=='all')document.getElementById('sec-chips').classList.remove('collapsed');
+  st.textContent=f.s==='all'?'Sectores ▾':'Sectores: '+(f.s==='__otros__'?'Otros':f.s)+' ▾';
   renderNews();  // los filtros aplican también a novedades y cambios
  }catch(e){
   // ante cualquier error queda lo servido por el servidor: todo visible
@@ -1701,9 +1736,19 @@ document.addEventListener('click',function(e){
   });
   return;
  }
- if(e.target.closest('#sec-toggle')){
-  safe('sectores',function(){
-   document.getElementById('sec-chips').classList.toggle('collapsed');
+ if(e.target.closest('#sec-toggle')){safe('sectores',openSheet);return}
+ if(e.target.closest('#sheet-close')||e.target===document.getElementById('sheet-backdrop')){
+  safe('cerrar panel',closeSheet);
+  return;
+ }
+ var sc=e.target.closest('#sec-sheet .sec-chip');
+ if(sc){
+  safe('sector',function(){
+   var f=getFilters();
+   f.s=sc.dataset.v;
+   localStorage.setItem(FKEY,JSON.stringify(f));
+   applyFilters();
+   closeSheet();  // seleccionar cierra el panel solo
   });
   return;
  }
@@ -1735,6 +1780,11 @@ document.addEventListener('click',function(e){
   });
  }
 });
+document.addEventListener('input',function(e){
+ if(e.target&&e.target.id==='sec-search'){
+  safe('buscar sector',function(){sheetSearch(e.target.value)});
+ }
+});
 safe('favoritas',renderFavs);
 safe('novedades',renderNews);
 safe('filtros',applyFilters);
@@ -1743,6 +1793,17 @@ safe('filtros',applyFilters);
 
 
 PT_LABEL = {"casa": "casas", "terreno": "terrenos", "depto": "deptos"}
+
+JUNK_SECTORS = {"chile", "metropolitana", "region metropolitana", "rm",
+                "valparaiso", "region de valparaiso", "v region",
+                "santiago", "otros"}
+
+
+def _sector_junk(name):
+    """Sectores basura del campo sucio: países/regiones, '0', rangos
+    numéricos — van a 'Otros' en vez de aparecer como chip propio."""
+    f = _fold(name).strip()
+    return not f or f in JUNK_SECTORS or not re.search(r"[a-zñ]", f)
 
 
 def render_report(props, cfg):
@@ -1760,23 +1821,32 @@ def render_report(props, cfg):
 
     now = datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC")
 
-    # --- chips de filtro: sectores (campo comuna limpio) con ≥5 propiedades
-    sec_counts = {}
+    # --- chips de filtro: sectores (campo comuna) con ≥5 propiedades, sin
+    #     basura (países/regiones/números), agrupados por zona en un panel
+    sec_by_zona = {}
     for p in active.values():
         c = p.get("comuna") or ""
-        if c:
-            sec_counts[c] = sec_counts.get(c, 0) + 1
-    main_sectors = sorted(
-        [s for s, n in sec_counts.items() if n >= 5],
-        key=lambda s: -sec_counts[s],
-    )
+        if not c or _sector_junk(c):
+            continue
+        z = p.get("zona") or p.get("scope") or "?"
+        sec_by_zona.setdefault(z, {})
+        sec_by_zona[z][c] = sec_by_zona[z].get(c, 0) + 1
+    sheet_groups = []
+    for z in zonas.values():
+        secs = {s: n for s, n in sec_by_zona.get(z, {}).items() if n >= 5}
+        if not secs:
+            continue
+        chips = "".join(
+            f'<button class="chip sec-chip" data-v="{esc(s)}">{esc(s)} ({n})</button>'
+            for s, n in sorted(secs.items(), key=lambda kv: -kv[1])
+        )
+        sheet_groups.append(
+            f'<div class="sheet-group" data-zona="{esc(z)}">'
+            f'<div class="sheet-sub">{esc(z)}</div>{chips}</div>'
+        )
     chips_zona = "".join(
         f'<button class="chip" data-v="{esc(z)}">{esc(z)}</button>'
         for z in zonas.values()
-    )
-    chips_sector = "".join(
-        f'<button class="chip" data-v="{esc(s)}">{esc(s)} ({sec_counts[s]})</button>'
-        for s in main_sectors
     )
     filter_bar = f"""
 <div id="filter-bar">
@@ -1790,12 +1860,22 @@ def render_report(props, cfg):
   <button class="chip" id="sec-toggle">Sectores ▾</button>
   <button class="chip" id="clear-filters" style="display:none">Limpiar ✕</button>
  </div>
- <div class="chip-group collapsed" data-group="s" id="sec-chips">
-  <button class="chip" data-v="all">Todos los sectores</button>{chips_sector}
-  <button class="chip" data-v="__otros__">Otros</button>
- </div>
 </div>
-<div id="inv-count"></div>"""
+<div id="inv-count"></div>
+<div id="sheet-backdrop" class="hidden"></div>
+<div id="sec-sheet" class="hidden" role="dialog" aria-label="Elegir sector">
+ <div class="sheet-head">
+  <input id="sec-search" type="search" placeholder="Buscar sector…" autocomplete="off">
+  <button id="sheet-close" class="chip" aria-label="cerrar">✕</button>
+ </div>
+ <div class="sheet-body">
+  <button class="chip sec-chip" data-v="all">Todos los sectores</button>
+  {"".join(sheet_groups)}
+  <div class="sheet-group" data-zona="">
+   <button class="chip sec-chip" data-v="__otros__">Otros</button>
+  </div>
+ </div>
+</div>"""
 
     # --- novedades: las renderiza JS según la última visita del usuario
     #     (localStorage); aquí solo se calculan los conteos del día para el log
