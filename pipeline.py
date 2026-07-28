@@ -904,37 +904,44 @@ def migrate_db(props):
         print(f"Base migrada a listings por aviso: {migrated} propiedades")
 
 
+def _m2_gate_ok(p, cand):
+    """Compatibilidad de superficies. En casas manda el construido (±5%)
+    cuando ambos lo declaran, con terreno como señal secundaria (±10%).
+    Con un solo m² en algún lado (histórico), ese valor único pudo haber
+    sido construido O terreno: es compatible si calza (±5%) con CUALQUIER
+    superficie declarada del otro lado."""
+    pm2c, cm2c = p.get("m2c"), cand.get("m2c")
+    if cand["ptype"] == "casa" and pm2c and cm2c:
+        if abs(pm2c - cm2c) / pm2c > 0.05:
+            return False
+        pm2t, cm2t = p.get("m2t"), cand.get("m2t")
+        if pm2t and cm2t and abs(pm2t - cm2t) / pm2t > 0.10:
+            return False
+        return True
+    pvals = {v for v in (p.get("m2c"), p.get("m2t"), p.get("m2")) if v}
+    cvals = {v for v in (cand.get("m2c"), cand.get("m2t"), cand.get("m2")) if v}
+    return any(abs(a - b) / a <= 0.05 for a in pvals for b in cvals)
+
+
 def find_match(cand, props, counters=None):
-    """Busca la propiedad a la que pertenece el aviso. Tras el gate de
-    comuna+tipo+operación+m²±5%+dormitorios, la señal principal es la
-    coincidencia de fotos por pHash; si ambos lados tienen fotos y NO
-    coinciden, no se fusiona por ninguna señal débil (vendedor/texto):
-    las corredoras tienen muchas casas parecidas."""
+    """Busca la propiedad a la que pertenece el aviso. Gates duros:
+    tipo+operación+zona, superficies y dormitorios. La coincidencia de
+    fotos por pHash es la señal principal y NO exige igualdad de comuna
+    (ese campo trae calles/barrios sucios); las señales débiles
+    (vendedor/texto) sí la exigen, y si ambos lados tienen fotos que NO
+    coinciden, nunca se fusiona por señal débil."""
     cn = counters if counters is not None else {}
     cand_tok = tokenize(cand["title"])
     for pid, p in props.items():
         if cand["lid"] in p["listings"]:
             return pid
-        if (
-            p["comuna"] != cand["comuna"]
-            or p["ptype"] != cand["ptype"]
-            or p["op"] != cand["op"]
-        ):
+        if p["ptype"] != cand["ptype"] or p["op"] != cand["op"]:
             continue
         pz = p.get("zona") or p.get("scope") or ""
         cz = cand.get("zona") or ""
         if pz and cz and pz != cz:
             continue
-        # m²: en casas manda el construido (±5%) cuando ambos lo declaran,
-        # con el terreno como señal secundaria; si no, m² principal ±5%
-        pm2c, cm2c = p.get("m2c"), cand.get("m2c")
-        if cand["ptype"] == "casa" and pm2c and cm2c:
-            if abs(pm2c - cm2c) / pm2c > 0.05:
-                continue
-            pm2t, cm2t = p.get("m2t"), cand.get("m2t")
-            if pm2t and cm2t and abs(pm2t - cm2t) / pm2t > 0.10:
-                continue
-        elif abs(p["m2"] - cand["m2"]) / p["m2"] > 0.05:
+        if not _m2_gate_ok(p, cand):
             continue
         # dormitorios: None vs None (típico en terrenos) es compatible;
         # solo descarta cuando ambos lados declaran valores distintos
@@ -950,6 +957,9 @@ def find_match(cand, props, counters=None):
             return pid
         if pm is False:
             # ambos con fotos y distintas: son propiedades diferentes
+            continue
+        # las señales débiles sí exigen la misma comuna
+        if p["comuna"] != cand["comuna"]:
             continue
         sim = jaccard(cand_tok, tokenize(p["title"]))
         pdiff = abs(p["priceUF"] - cand["priceUF"]) / max(p["priceUF"], 1)
@@ -970,15 +980,50 @@ def find_match(cand, props, counters=None):
     return None
 
 
-SCHEMA_VERSION = 2  # 2 = reparación de fusiones pre-pHash ya aplicada
+SCHEMA_VERSION = 3  # 2 = split pre-pHash aplicado; 3 = fantasmas re-fusionados
+
+
+def merge_duplicates(props):
+    """Reparación única (schema 3): re-fusiona propiedades fantasma creadas
+    cuando el gate viejo (comuna sucia antes de fotos; m² único vs
+    construidos separados) impedía el match. Recorre de más antigua a más
+    nueva y fusiona cada una que matchee con una anterior bajo las reglas
+    vigentes, conservando el firstSeen más antiguo y uniendo el historial."""
+    kept, merged = {}, 0
+    for pid, p in sorted(props.items(), key=lambda kv: kv[1].get("firstSeen") or "9"):
+        target = find_match(dict(p, lid=next(iter(p["listings"]), p.get("lid"))), kept)
+        if not target:
+            kept[pid] = p
+            continue
+        t = kept[target]
+        _absorb(t, p)
+        hist = {h["d"]: h["uf"] for h in t["priceHist"]}
+        for h in p["priceHist"]:
+            hist.setdefault(h["d"], h["uf"])
+        t["priceHist"] = [{"d": d, "uf": hist[d]} for d in sorted(hist)]
+        t["lastSeen"] = max(t["lastSeen"], p["lastSeen"])
+        t["priceUF"] = t["priceHist"][-1]["uf"]
+        for k in ("m2c", "m2t", "pub_estimada", "sector"):
+            if p.get(k) and not t.get(k):
+                t[k] = p[k]
+        t["repubs"] = len(t["listings"]) - 1
+        merged += 1
+    props.clear()
+    props.update(kept)
+    if merged:
+        print(f"Reparación: {merged} propiedades fantasma re-fusionadas "
+              "(firstSeen antiguo e historial conservados)")
+    return merged
 
 
 def apply_repairs(db, props):
     """Reparaciones únicas de esquema, idempotentes vía db['schema_version']:
-    la separación de fusiones pre-pHash corre una sola vez en la vida de la
-    base (re-separar cada día deshacía y rehacía las mismas fusiones)."""
-    if db.get("schema_version", 1) < 2:
+    cada una corre una sola vez en la vida de la base."""
+    v = db.get("schema_version", 1)
+    if v < 2:
         split_merged(props)
+    if v < 3:
+        merge_duplicates(props)
     db["schema_version"] = SCHEMA_VERSION
 
 
@@ -1517,13 +1562,7 @@ function updateMore(){
 function applyFilters(){
  try{
   var f=getFilters(),MAIN=mainSectors();
-  filtered=ORDER.filter(function(pid){var p=DATA[pid];
-   var okz=f.z==='all'||p.z===f.z;
-   var okt=f.t==='all'||p.pt===f.t;
-   var sec=p.sec||'';
-   var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
-   return okz&&okt&&oks;
-  });
+  filtered=ORDER.filter(function(pid){return matchesFilters(DATA[pid],f,MAIN)});
   shown=PAGE;
   renderInv();
   document.querySelectorAll('#filter-bar .chip[data-v]').forEach(function(ch){
@@ -1537,6 +1576,7 @@ function applyFilters(){
   var st=document.getElementById('sec-toggle');
   st.textContent=f.s==='all'?'Sectores ▾':'Sector: '+(f.s==='__otros__'?'Otros':f.s)+' ▾';
   if(f.s!=='all')document.getElementById('sec-chips').classList.remove('collapsed');
+  renderNews();  // los filtros aplican también a novedades y cambios
  }catch(e){
   // ante cualquier error queda lo servido por el servidor: todo visible
   console.error('radar filtros:',e);
@@ -1561,6 +1601,14 @@ function renderFavs(){
 function fmtRef(iso){
  return new Date(iso).toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
 }
+function matchesFilters(p,f,MAIN){
+ var okz=f.z==='all'||p.z===f.z;
+ var okt=f.t==='all'||p.pt===f.t;
+ var sec=p.sec||'';
+ var oks=f.s==='all'||(f.s==='__otros__'?MAIN.indexOf(sec)<0:sec===f.s);
+ return okz&&okt&&oks;
+}
+var newsExpanded=false;
 function renderNews(){
  var lv=localStorage.getItem(LV_KEY), first=!lv;
  var ref=(first?new Date(Date.now()-864e5).toISOString():lv).slice(0,10);
@@ -1581,18 +1629,30 @@ function renderNews(){
    if(prev!==cur)chgs.push([pid,p,prev,cur]);
   }
  });
+ // los filtros de la barra aplican también a las novedades
+ var f=getFilters(),MAIN=mainSectors();
+ news=news.filter(function(e){return matchesFilters(e[1],f,MAIN)});
+ chgs=chgs.filter(function(e){return matchesFilters(e[1],f,MAIN)});
  news.sort(function(a,b){return b[1].fs.localeCompare(a[1].fs)||a[1].uf-b[1].uf});
  chgs.sort(function(a,b){return (a[3]-a[2])/a[2]-(b[3]-b[2])/b[2]});
  document.getElementById('new-hdr').textContent='Nuevas desde tu última visita ('+news.length+')';
  document.getElementById('chg-hdr').textContent='Cambios de precio desde tu última visita ('+chgs.length+')';
- // CAP: sin tope, un "todo es nuevo" (primer día / incógnito) duplicaría el
- // inventario completo en el DOM y revienta la memoria en móviles
+ // CAP: sin tope, un "todo es nuevo" duplicaría el inventario en el DOM;
+ // anti-muro: >30 novedades → 10 + botón "Mostrar N restantes"
  var CAP=60;
- var extraN=news.length-CAP;
- document.getElementById('new-list').innerHTML=news.length
-   ?news.slice(0,CAP).map(function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')}).join('')
-    +(extraN>0?'<div class="note">…y '+extraN+' nuevas más. Todas están al inicio del “Inventario completo”, más abajo.</div>':'')
-   :'<div class="empty">Sin propiedades nuevas desde tu última visita.</div>';
+ var newCard=function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')};
+ var htmlN;
+ if(!news.length){
+  htmlN='<div class="empty">Sin propiedades nuevas desde tu última visita.</div>';
+ }else if(news.length>30&&!newsExpanded){
+  htmlN=news.slice(0,10).map(newCard).join('')
+   +'<button id="news-more" class="btn">Mostrar '+(news.length-10)+' restantes</button>';
+ }else{
+  var extraN=news.length-CAP;
+  htmlN=news.slice(0,CAP).map(newCard).join('')
+   +(extraN>0?'<div class="note">…y '+extraN+' nuevas más. Todas están al inicio del “Inventario completo”, más abajo.</div>':'');
+ }
+ document.getElementById('new-list').innerHTML=htmlN;
  var extraC=chgs.length-CAP;
  document.getElementById('chg-list').innerHTML=chgs.length
    ?chgs.slice(0,CAP).map(function(e){
@@ -1658,13 +1718,20 @@ document.addEventListener('click',function(e){
   return;
  }
  if(e.target.closest('#more-btn')){safe('mostrar más',showMore);return}
- var m=e.target.closest('#mark-seen');
+ if(e.target.closest('#news-more')){
+  safe('más novedades',function(){newsExpanded=true;renderNews()});
+  return;
+ }
+ var m=e.target.closest('.mark-btn');
  if(m){
   safe('visto',function(){
    localStorage.setItem(LV_KEY,new Date().toISOString());
+   newsExpanded=false;
    renderNews();
-   m.textContent='Visto ✓';
-   setTimeout(function(){m.textContent='Marcar todo como visto'},1500);
+   document.querySelectorAll('.mark-btn').forEach(function(btn){
+    btn.textContent='Visto ✓';
+    setTimeout(function(){btn.textContent='Marcar todo como visto'},1500);
+   });
   });
  }
 });
@@ -1781,10 +1848,11 @@ def render_report(props, cfg):
 <button id="fav-export" class="btn" style="display:none">Exportar</button>
 <h2 class="sec" id="new-hdr">Nuevas desde tu última visita</h2>
 <div class="empty" id="since-label"></div>
+<button id="mark-seen-top" class="btn mark-btn">Marcar todo como visto</button>
 <div id="new-list"><div class="empty">Cargando…</div></div>
 <h2 class="sec" id="chg-hdr">Cambios de precio desde tu última visita</h2>
 <div id="chg-list"><div class="empty">Cargando…</div></div>
-<button id="mark-seen" class="btn">Marcar todo como visto</button>
+<button id="mark-seen" class="btn mark-btn">Marcar todo como visto</button>
 <h2 class="sec">Inventario completo ({len(active)})</h2>
 <div id="inv-list">
 {inv_html}
