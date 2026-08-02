@@ -802,7 +802,11 @@ def hash_new_photos(items, hashed, detailed, pubdates=None, areas=None):
     for it in new_items:
         lid = str(it["lid"])
         photos = list(it.get("photos") or [])[:4]
-        if len(photos) < 2 and it.get("url") and budget > 0:
+        # PRIORIDAD: los avisos nuevos del día siempre encabezan el
+        # presupuesto de detalle — su pub_estimada define si son "nuevas"
+        # genuinas y se necesita el mismo día en que aparecen; el backlog
+        # usa solo el sobrante
+        if it.get("url") and lid not in detailed and budget > 0:
             time.sleep(2)  # pausa entre páginas de detalle
             budget -= 1
             ok, gallery, pub, ar = fetch_detail_photos(session, it["url"])
@@ -1366,7 +1370,7 @@ h2.sec{font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;margin:34
 .title{font-family:'Archivo',sans-serif;font-weight:600;font-size:14px;line-height:1.35;margin-top:4px;padding-right:40px}
 .meta{font-size:12px;color:var(--muted);margin-top:6px;font-family:'IBM Plex Mono',monospace;line-height:1.6}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:999px;margin:8px 6px 0 0;letter-spacing:.01em}
-.b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}
+.b-g{background:var(--gsoft);color:var(--deep)}.b-a{background:var(--asoft);color:var(--amber)}.b-r{background:var(--rsoft);color:var(--red)}.b-m{background:#ECEFEC;color:var(--muted)}
 .pchg{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;margin-top:10px}
 .pchg.down{color:var(--green)}.pchg.up{color:var(--red)}
 a.btn,button.btn{display:inline-flex;align-items:center;justify-content:center;margin:10px 8px 0 0;padding:0 14px;min-height:40px;min-width:44px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--deep);font-weight:600;font-size:12.5px;text-decoration:none;cursor:pointer;font-family:'Public Sans',sans-serif}
@@ -1443,6 +1447,10 @@ def card_html(pid, p, extra_html="", extra_badges=""):
     badges = extra_badges
     if p.get("repubs"):
         badges += f'<span class="badge b-a">republicada ×{p["repubs"]}</span>'
+    # catalogada hace poco pero publicada hace tiempo (según el aviso)
+    if (p.get("pub_estimada") and days_since(p["firstSeen"]) <= 3
+            and days_since(p["pub_estimada"]) > 3):
+        badges += '<span class="badge b-m">recién catalogada</span>'
     img = (f'<img src="{esc(p["thumb"])}" alt="" width="96" height="96" '
            'loading="lazy">') if p.get("thumb") else ""
     sector = p.get("sector") or p.get("comuna") or "—"
@@ -1514,6 +1522,9 @@ function cardHTML(pid,p,extra){
  var badges='';
  if(!p.act)badges+='<span class="badge b-r">ya no publicada</span>';
  if(p.rep)badges+='<span class="badge b-a">republicada ×'+p.rep+'</span>';
+ // catalogada hace poco pero publicada hace tiempo: encontrable sin ser "nueva"
+ if(p.act&&p.fs&&p.pub&&daysFrom(p.fs)<=3&&daysFrom(p.pub)>3)
+  badges+='<span class="badge b-m">recién catalogada</span>';
  var db=p.d?(' · '+p.d+'D'+(p.b?'/'+p.b+'B':'')):'';
  var img=p.img?'<img src="'+esc(p.img)+'" alt="" width="96" height="96" loading="lazy">':'';
  var price=(p.act?'UF ':'último precio UF ')+uf(p.uf);
@@ -1656,7 +1667,16 @@ function renderNews(){
  Object.keys(DATA).forEach(function(pid){
   var p=DATA[pid];
   if(!p.act||!p.fs)return;
-  if(isNew(p.fs)){news.push([pid,p]);return}
+  if(isNew(p.fs)){
+   // "nueva" genuina: publicada hace ≤72 h según el aviso; sin fecha
+   // declarada califica con etiqueta; publicada hace más → inventario
+   // ("recién catalogada"). firstSeen antiguo (republicaciones) nunca
+   // llega aquí: manda el firstSeen.
+   var pd=p.pub?daysFrom(p.pub):null;
+   if(pd!==null&&pd>3)return;
+   news.push([pid,p,pd===null]);
+   return;
+  }
   var hist=p.hist||[];  // pares [fecha, uf]
   var before=hist.filter(function(h){return !isNew(h[0])});
   if(before.length&&hist.length>before.length){
@@ -1675,7 +1695,11 @@ function renderNews(){
  // CAP: sin tope, un "todo es nuevo" duplicaría el inventario en el DOM;
  // anti-muro: >30 novedades → 10 + botón "Mostrar N restantes"
  var CAP=60;
- var newCard=function(e){return cardHTML(e[0],e[1],'<div><span class="badge b-g">nueva</span></div>')};
+ var newCard=function(e){
+  var tag=e[2]?'<span class="badge b-a">sin fecha declarada</span>'
+             :'<span class="badge b-g">nueva</span>';
+  return cardHTML(e[0],e[1],'<div>'+tag+'</div>');
+ };
  var htmlN;
  if(!news.length){
   htmlN='<div class="empty">Sin propiedades nuevas desde tu última visita.</div>';
